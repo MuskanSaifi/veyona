@@ -1,0 +1,126 @@
+.container {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: linear-gradient(135deg, var(--accent-terracotta) 0%, var(--accent-coral) 100%);
+  padding: 20px;
+}
+
+.card {
+  width: 100%;
+  max-width: 400px;
+  padding: 40px;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.heading {
+  text-align: center;
+  margin-bottom: 8px;
+  font-size: 28px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.subtitle {
+  text-align: center;
+  margin-bottom: 30px;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: #374151;
+  font-size: 14px;
+}
+
+.input {
+  width: 100%;
+  padding: 14px;
+  border-radius: 8px;
+  border: 2px solid #e5e7eb;
+  font-size: 16px;
+  transition: all 0.2s;
+  box-sizing: border-box;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--accent-terracotta);
+  box-shadow: 0 0 0 3px rgba(173, 110, 94, 0.12);
+}
+
+.hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #9ca3af;
+  font-style: italic;
+}
+
+.button {
+  padding: 14px;
+  background: linear-gradient(135deg, var(--accent-terracotta) 0%, var(--accent-coral) 100%);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 16px;
+  transition: all 0.2s;
+  margin-top: 10px;
+}
+
+.button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(173, 110, 94, 0.3);
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.linkButton {
+  background: none;
+  border: none;
+  color: var(--accent-terracotta);
+  cursor: pointer;
+  font-size: 14px;
+  text-decoration: underline;
+  padding: 10px 0;
+  margin-top: -10px;
+}
+
+.linkButton:hover {
+  color: var(--accent-coral);
+}
+
+.registerLink {
+  text-align: center;
+  margin-top: 10px;
+  margin-bottom: 20px;
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.link {
+  color: var(--accent-terracotta);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+

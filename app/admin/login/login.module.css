@@ -1,0 +1,48 @@
+.container {
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: linear-gradient(135deg, var(--accent-terracotta), var(--accent-coral));
+}
+
+.card {
+  width: 350px;
+  padding: 30px;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+}
+
+.heading {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.input {
+  padding: 12px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  font-size: 14px;
+}
+
+.button {
+  padding: 12px;
+  background: var(--accent-terracotta);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
