@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
+import "leaflet/dist/leaflet.css";
 import toast from "react-hot-toast";
 
 function normalizeAddressFromNominatim(addr = {}) {
@@ -72,14 +73,25 @@ export default function LocationPickerModal({
         const L = await import("leaflet");
         leafletRef.current = L;
 
-        // Load Leaflet CSS once
-        if (typeof document !== "undefined" && !document.getElementById("leaflet-css")) {
-          const link = document.createElement("link");
-          link.id = "leaflet-css";
-          link.rel = "stylesheet";
-          link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-          document.head.appendChild(link);
-        }
+        // Ensure marker icons resolve correctly in production builds.
+        // (Leaflet's default URLs assume assets are served from /images.)
+        try {
+          delete L.Icon.Default.prototype._getIconUrl;
+          L.Icon.Default.mergeOptions({
+            iconRetinaUrl: new URL(
+              "leaflet/dist/images/marker-icon-2x.png",
+              import.meta.url
+            ).toString(),
+            iconUrl: new URL(
+              "leaflet/dist/images/marker-icon.png",
+              import.meta.url
+            ).toString(),
+            shadowUrl: new URL(
+              "leaflet/dist/images/marker-shadow.png",
+              import.meta.url
+            ).toString(),
+          });
+        } catch {}
 
         if (cancelled) return;
         if (!mapElRef.current) return;
@@ -111,6 +123,7 @@ export default function LocationPickerModal({
           } catch {}
         }, 50);
       } catch (e) {
+        console.error("Leaflet map init failed:", e);
         toast.error("Could not load map");
       }
     })();
