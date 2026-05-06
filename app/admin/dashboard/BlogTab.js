@@ -236,16 +236,29 @@ export default function BlogTab() {
   };
 
   /* ---------------- EDIT BLOG ---------------- */
-  const editBlog = (b) => {
-    setEditing(b);
-    setForm({
-      ...b,
-      tags: b.tags?.join(", ") || "",
-      image: null,
-    });
-    setImagePreview(b.image || null);
-    editor?.commands.setContent(b.content || "");
-    setOpen(true);
+  const editBlog = async (b) => {
+    try {
+      setLoading(true);
+      const res = await fetch(`/api/blog/${b.slug}?admin=true`);
+      if (!res.ok) {
+        toast.error("Failed to load blog details for editing");
+        return;
+      }
+      const blog = await res.json();
+      setEditing(blog);
+      setForm({
+        ...blog,
+        tags: blog.tags?.join(", ") || "",
+        image: null,
+      });
+      setImagePreview(blog.image || null);
+      editor?.commands.setContent(blog.content || "");
+      setOpen(true);
+    } catch (error) {
+      toast.error("Failed to load blog details");
+    } finally {
+      setLoading(false);
+    }
   };
 
   /* ---------------- TOOLBAR BUTTON ---------------- */

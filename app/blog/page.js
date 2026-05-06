@@ -81,10 +81,10 @@ export default function BlogPage() {
   }
 
   return (
-    <div style={{ minHeight: "80vh", background: "#f9fafb", padding: "40px 20px" }}>
+    <div style={{ minHeight: "80vh", background: "#f9fafb", padding: "30px 16px" }}>
       <div style={{ maxWidth: 1200, margin: "0 auto" }}>
         {/* Header */}
-        <div style={{ textAlign: "center", marginBottom: "50px" }}>
+        <div style={{ textAlign: "center", marginBottom: "32px" }}>
           <h1
             style={{
               fontSize: "48px",
@@ -196,8 +196,8 @@ export default function BlogPage() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(350px, 1fr))",
-              gap: "30px",
+              gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+              gap: "24px",
             }}
           >
             {filteredBlogs.map((blog) => (
@@ -227,7 +227,7 @@ export default function BlogPage() {
                 }}
               >
                 {blog.image && (
-                  <div style={{ position: "relative", width: "100%", height: "250px", overflow: "hidden" }}>
+                  <div style={{ position: "relative", width: "100%", height: "220px", overflow: "hidden" }}>
                     <Image
                       src={blog.image}
                       alt={blog.title}
@@ -253,8 +253,8 @@ export default function BlogPage() {
                     )}
                   </div>
                 )}
-                <div style={{ padding: "24px", flex: 1, display: "flex", flexDirection: "column" }}>
-                  <div style={{ display: "flex", gap: "8px", marginBottom: "12px", flexWrap: "wrap" }}>
+                <div style={{ padding: "20px", flex: 1, display: "flex", flexDirection: "column" }}>
+                  <div style={{ display: "flex", gap: "8px", marginBottom: "10px", flexWrap: "wrap" }}>
                     {blog.category && (
                       <span
                         style={{
@@ -273,9 +273,9 @@ export default function BlogPage() {
                   </div>
                   <h2
                     style={{
-                      fontSize: "24px",
+                      fontSize: "22px",
                       fontWeight: 700,
-                      marginBottom: "12px",
+                      marginBottom: "10px",
                       color: "#1f2937",
                       lineHeight: 1.3,
                     }}
@@ -285,9 +285,9 @@ export default function BlogPage() {
                   <p
                     style={{
                       color: "#6b7280",
-                      fontSize: "15px",
+                      fontSize: "14px",
                       lineHeight: 1.6,
-                      marginBottom: "16px",
+                      marginBottom: "14px",
                       flex: 1,
                     }}
                   >

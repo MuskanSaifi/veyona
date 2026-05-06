@@ -16,6 +16,7 @@ import VideoSection from "./components/VideoSection";
 import ServicesSection from "./components/ServicesSection";
 import AllProductsSection from "./components/AllProductsSection";
 import ShortAboutSection from "./components/ShortAboutSection";
+import ReelSection from "./components/ReelSection";
 
 export default function Home() {
   const [banners, setBanners] = useState([]);
@@ -262,7 +263,7 @@ export default function Home() {
                   zIndex: 10,
                 }}
               >
-                {banners.map((_, index) => (
+                {banners.map((_, index) => (  
                   <button
                     key={index}
                     onClick={() => setCurrentBannerIndex(index)}
@@ -318,6 +319,9 @@ export default function Home() {
       {/* Why Choose Us Section */}
       <WhyChooseUs />
 
+      {/* Reels Section */}
+      <ReelSection />
+
       {/* Trust Building Section */}
       <TrustSignals />
 
@@ -329,6 +333,9 @@ export default function Home() {
 
       {/* Top Blogs Section */}
       <TopBlogs />
+
+      {/* Reels Section */}
+      <ReelSection />
 
        {/* Video Section */}
        {/* <VideoSection

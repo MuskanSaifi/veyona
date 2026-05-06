@@ -28,6 +28,7 @@ import AppDownloadTab from "./AppDownloadTab";
 import CouponTab from "./CouponTab";
 import TrustSignalsTab from "./TrustSignalsTab";
 import UsersTab from "./UsersTab";
+import ReelTab from "./ReelTab";
 import {
   FiHome,
   FiLogOut,
@@ -183,6 +184,14 @@ export default function DashboardLayout() {
   </button>
 
   <button
+    className={`${styles.menuItem} ${activeTab === "reels" ? styles.active : ""}`}
+    onClick={() => setActiveTab("reels")}
+  >
+    <FiSmartphone className={styles.icon} /> {/* Or find a video icon */}
+    Reels
+  </button>
+
+  <button
     className={`${styles.menuItem} ${activeTab === "testimonials" ? styles.active : ""}`}
     onClick={() => setActiveTab("testimonials")}
   >
@@ -329,6 +338,7 @@ export default function DashboardLayout() {
         {activeTab === "appointments" && <AppointmentTab />}
         {activeTab === "coupons" && <CouponTab />}
         {activeTab === "blogs" && <BlogTab />}
+        {activeTab === "reels" && <ReelTab />}
         {activeTab === "testimonials" && <TestimonialTab />}
         {activeTab === "featured-professionals" && <FeaturedProfessionalTab />}
         {activeTab === "about" && <AboutTab />}

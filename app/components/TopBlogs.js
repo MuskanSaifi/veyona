@@ -12,9 +12,9 @@ export default function TopBlogs() {
 
   const fetchBlogs = async () => {
     try {
-      const res = await fetch("/api/blog?limit=4");
+      const res = await fetch("/api/blog?limit=3");
       const data = await res.json();
-      setBlogs(data);
+      setBlogs(Array.isArray(data) ? data.slice(0, 3) : []);
     } catch (error) {
       console.error("Error fetching blogs:", error);
     }

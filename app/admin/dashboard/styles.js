@@ -313,7 +313,66 @@ export const actionButton = {
   cursor: "pointer",
   transition: "all 0.2s ease",
 };
+// ReelTab specific styles
+export const container = {
+  padding: "24px",
+  maxWidth: "1200px",
+  margin: "0 auto",
+};
 
+export const header = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  marginBottom: "24px",
+};
+
+export const title = {
+  fontSize: "28px",
+  fontWeight: 700,
+  color: "#1e293b",
+  margin: 0,
+};
+
+export const list = {
+  display: "grid",
+  gap: "16px",
+};
+
+export const item = {
+  background: "white",
+  padding: "16px",
+  borderRadius: "12px",
+  boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
+  border: "1px solid #e2e8f0",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+};
+
+export const itemContent = {
+  flex: 1,
+};
+
+export const itemActions = {
+  display: "flex",
+  gap: "8px",
+};
+
+export const modalContent = {
+  maxWidth: "500px",
+  width: "100%",
+};
+
+export const formGroup = {
+  marginBottom: "16px",
+};
+
+export const modalActions = {
+  display: "flex",
+  gap: "12px",
+  justifyContent: "flex-end",
+};
 
 
 

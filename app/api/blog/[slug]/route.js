@@ -14,15 +14,18 @@ export async function GET(req, { params }) {
       return NextResponse.json({ error: "Blog slug is required" }, { status: 400 });
     }
 
+    const { searchParams } = new URL(req.url);
+    const adminMode = searchParams.get("admin") === "true";
+
     // Try to find blog with exact slug match
-    let blog = await Blog.findOne({ slug: slug.trim(), active: true });
+    let query = { slug: slug.trim() };
+    if (!adminMode) query.active = true;
+    let blog = await Blog.findOne(query);
     
     // If not found, try case-insensitive search as fallback
     if (!blog) {
-      blog = await Blog.findOne({ 
-        slug: { $regex: new RegExp(`^${slug.trim()}$`, 'i') }, 
-        active: true 
-      });
+      query.slug = { $regex: new RegExp(`^${slug.trim()}$`, 'i') };
+      blog = await Blog.findOne(query);
     }
 
     if (!blog) {
