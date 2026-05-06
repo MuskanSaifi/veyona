@@ -135,7 +135,7 @@ export default function CategoriesSection({
 
         {/* Grid - simpleLayout: 2x2, else 1 or 2 cols */}
         <div className={`grid animate-fade-in ${
-          simpleLayout ? "grid-cols-1 sm:grid-cols-2 gap-5 md:gap-6" :
+          simpleLayout ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 md:gap-6" :
           categories.length === 1 ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2"
         } ${compactLayout ? "gap-4 lg:gap-5" : "gap-6 lg:gap-8"}`}>
           {categories.map((category) => {
@@ -149,27 +149,30 @@ export default function CategoriesSection({
                 <Link
                   key={category._id}
                   href={`/category/${category._id}`}
-                  className="group block rounded-2xl overflow-hidden bg-white shadow-sm hover:shadow-lg transition-all duration-300"
+                  className="group block rounded-[2rem] overflow-hidden bg-white shadow-[0_20px_60px_rgba(15,23,42,0.08)] border border-transparent transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_24px_80px_rgba(15,23,42,0.12)] hover:border-[rgba(59,130,246,0.12)]"
                 >
-                  <div className="relative h-56 sm:h-64 overflow-hidden rounded-t-2xl">
+                  <div className="relative h-56 sm:h-64 overflow-hidden bg-slate-100">
                     <Image
-                      src={category.image}
+                      src={category.image || DEFAULT_IMAGE}
                       alt={category.name}
                       fill
-                      className="object-cover transition-transform duration-500 group-hover:scale-105"
+                      className="object-cover transition-transform duration-700 group-hover:scale-105"
                     />
+                    <div className="absolute left-5 top-5 w-12 h-12 rounded-full bg-white/95 shadow-sm flex items-center justify-center text-sm font-semibold text-[var(--accent-terracotta)]">
+                      {category.name?.[0] || "S"}
+                    </div>
                   </div>
-                  <div className="p-5 rounded-b-2xl bg-white">
-                    <h3 className="text-lg font-bold uppercase text-gray-900 mb-2">
+                  <div className="p-6 bg-white">
+                    <h3 className="text-lg sm:text-xl font-bold uppercase tracking-[0.35em] text-gray-900 mb-3">
                       {category.name}
                     </h3>
-                    <p className="text-sm text-gray-600 line-clamp-2 mb-3">
-                      {category.description || `Explore ${category.name} services.`}
+                    <p className="text-sm text-gray-600 leading-6 mb-6 min-h-[5rem]">
+                      {category.description || `Veyona provides premium ${category.name.toLowerCase()} services with expert care and soothing environments.`}
                     </p>
-                    <span className="inline-flex items-center text-sm font-medium text-gray-700 group-hover:text-[#AD6E5E] transition-colors">
-                      Explore Services
-                      <span className="ml-1 group-hover:ml-2 transition-all">→</span>
-                    </span>
+                    <div className="flex items-center gap-2 text-sm font-semibold text-[var(--accent-terracotta)]">
+                      <span>Explore Services</span>
+                      <span className="transition-transform duration-300 group-hover:translate-x-1">→</span>
+                    </div>
                   </div>
                 </Link>
               );
