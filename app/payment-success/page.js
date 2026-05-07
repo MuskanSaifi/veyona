@@ -10,16 +10,16 @@ function PaymentSuccessContent() {
   const amount = searchParams.get("amount");
   const safeAmount = Number.isFinite(Number(amount)) ? Number(amount) : null;
   const mode = (searchParams.get("mode") || "").toLowerCase();
-  const isBookNowPayLater = mode === "book_now_pay_later";
+  const isOfflineBooking = mode === "book_now_pay_later" || mode === "pay_at_salon";
 
   return (
     <main className={styles.page}>
       <section className={styles.card}>
         <div className={styles.check}>✓</div>
-        <h1>{isBookNowPayLater ? "Booking Confirmed" : "Payment Successful"}</h1>
-        {!isBookNowPayLater && safeAmount != null && <p className={styles.amount}>Rs {safeAmount.toFixed(2)}</p>}
+        <h1>{isOfflineBooking ? "Booking Confirmed" : "Payment Successful"}</h1>
+        {!isOfflineBooking && safeAmount != null && <p className={styles.amount}>Rs {safeAmount.toFixed(2)}</p>}
         <p className={styles.text}>
-          {isBookNowPayLater
+          {isOfflineBooking
             ? "Thank you for booking with us. Please pay during your appointment."
             : "Thank you for booking with us. Your payment is confirmed."}
         </p>

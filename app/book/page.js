@@ -421,10 +421,10 @@ function BookPageContent() {
       }
 
       // Book now, pay later (no online payment)
-      if (paymentPlan === "book_now_pay_later") {
+      if (paymentPlan === "book_now_pay_later" || paymentPlan === "pay_at_salon") {
         toast.success("Appointment booked. Pay later.");
         dispatch(setBookingServices([]));
-        router.push(`/payment-success?mode=book_now_pay_later`);
+        router.push(`/payment-success?mode=${paymentPlan}`);
         return;
       }
 
@@ -1121,6 +1121,16 @@ function BookPageContent() {
                   />
                   Book Now, Pay Later
                 </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                  <input
+                    type="radio"
+                    name="paymentPlan"
+                    value="pay_at_salon"
+                    checked={paymentPlan === "pay_at_salon"}
+                    onChange={() => setPaymentPlan("pay_at_salon")}
+                  />
+                  Pay at salon (cash on visit)
+                </label>
               </div>
             </div>
           </div>
@@ -1141,7 +1151,7 @@ function BookPageContent() {
                 cursor: loading ? "not-allowed" : "pointer",
               }}
             >
-              {loading ? "Processing..." : paymentPlan === "book_now_pay_later" ? "Book Appointment" : "Book & Pay"}
+              {loading ? "Processing..." : paymentPlan === "book_now_pay_later" || paymentPlan === "pay_at_salon" ? "Book Appointment" : "Book & Pay"}
             </button>
             <button
               type="button"

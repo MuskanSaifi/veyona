@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
+import LocationPickerModal from "@/app/components/LocationPickerModal";
 
 export default function UserAddressesPage() {
   const router = useRouter();
@@ -9,6 +10,7 @@ export default function UserAddressesPage() {
   const [saving, setSaving] = useState(false);
   const [items, setItems] = useState([]); // { label, address }
   const [defaultIndex, setDefaultIndex] = useState(0);
+  const [mapIndex, setMapIndex] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -138,7 +140,16 @@ export default function UserAddressesPage() {
                   />
                 </div>
                 <div className="md:col-span-2">
-                  <label className="block text-xs font-bold text-slate-600 mb-1">Address</label>
+                  <div className="flex items-center justify-between gap-3 mb-1">
+                    <label className="block text-xs font-bold text-slate-600">Address</label>
+                    <button
+                      type="button"
+                      onClick={() => setMapIndex(idx)}
+                      className="rounded-xl border border-slate-200 bg-slate-100 text-slate-800 text-xs font-bold px-3 py-2 hover:bg-slate-200"
+                    >
+                      {it.address?.trim() ? "Change on map" : "Choose on map"}
+                    </button>
+                  </div>
                   <input
                     value={it.address || ""}
                     onChange={(e) =>
@@ -170,6 +181,18 @@ export default function UserAddressesPage() {
             Back
           </button>
         </div>
+        <LocationPickerModal
+          open={mapIndex !== null}
+          initialQuery={items[mapIndex]?.address || ""}
+          onClose={() => setMapIndex(null)}
+          onConfirm={(selection) => {
+            if (mapIndex === null) return;
+            setItems((p) =>
+              p.map((x, i) => (i === mapIndex ? { ...x, address: selection.location || x.address } : x))
+            );
+            setMapIndex(null);
+          }}
+        />
       </div>
     </div>
   );

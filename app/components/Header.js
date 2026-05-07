@@ -160,7 +160,7 @@ export default function Header() {
   const sidebarItems = [
     { key: "profile", label: "Update profile", icon: FaUserEdit, href: "/user/profile" },
     { key: "orders", label: "My orders", icon: FaClipboardList, href: "/user/orders" },
-    { key: "consultations", label: "My consultations", icon: FaCalendarCheck, href: "/user/consultations" },
+    { key: "consultations", label: "My consultations", icon: FaCalendarCheck, href: "/user/dashboard" },
     { key: "addresses", label: "My addresses", icon: FaMapMarkerAlt, href: "/user/addresses" },
     { key: "refer", label: "Refer a friend", icon: FaHandHoldingHeart, href: "/user/refer" },
     { key: "rate", label: "Rate us", icon: FaStar, href: "/user/rate" },

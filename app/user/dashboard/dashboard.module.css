@@ -34,16 +34,47 @@
 .userInfo {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 14px;
   color: #64748b;
-  font-size: 15px;
   margin: 0;
+}
+
+.userAvatar,
+.userAvatarFallback {
+  width: 52px;
+  height: 52px;
+  border-radius: 18px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: #f8fafc;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.userAvatar {
+  object-fit: cover;
+}
+
+.userAvatarFallback {
+  border: 1px solid rgba(226, 232, 240, 0.95);
 }
 
 .userIcon {
   color: var(--accent-terracotta);
-  font-size: 14px;
+  font-size: 18px;
   opacity: 0.9;
+}
+
+.userName {
+  font-weight: 700;
+  color: #111827;
+  font-size: 15px;
+}
+
+.userMeta {
+  font-size: 14px;
+  color: #64748b;
 }
 
 .sep {

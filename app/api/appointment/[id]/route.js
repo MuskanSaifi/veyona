@@ -91,6 +91,12 @@ export async function PUT(req, { params }) {
       if (!Number.isFinite(delta) || delta <= 0) {
         return NextResponse.json({ message: "cashPaidDelta must be a positive number" }, { status: 400 });
       }
+      if (auth.role === "employee") {
+        const empId = appointment.employee?._id?.toString?.() || appointment.employee?.toString?.();
+        if (empId !== auth.id?.toString?.()) {
+          return NextResponse.json({ message: "Not allowed" }, { status: 403 });
+        }
+      }
       appointment.payment = appointment.payment || {};
       appointment.payment.paidCash = Number(appointment.payment.paidCash || 0) + delta;
       appointment.payments = appointment.payments || [];

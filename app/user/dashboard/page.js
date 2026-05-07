@@ -319,10 +319,18 @@ export default function UserDashboard() {
           <h1 className={styles.title}>My Dashboard</h1>
           {user && (
             <div className={styles.userInfo}>
-              <FaUser className={styles.userIcon} />
-              <span>{user.name || "User"}</span>
-              <span className={styles.sep}>•</span>
-              <span>{user.phone}</span>
+              {user.avatar ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={user.avatar} alt={user.name || "User"} className={styles.userAvatar} />
+              ) : (
+                <div className={styles.userAvatarFallback}>
+                  <FaUser className={styles.userIcon} />
+                </div>
+              )}
+              <div>
+                <div className={styles.userName}>{user.name || "User"}</div>
+                <div className={styles.userMeta}>{user.phone}</div>
+              </div>
             </div>
           )}
         </div>
