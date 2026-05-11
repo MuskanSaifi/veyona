@@ -25,11 +25,26 @@ export default function EmployeeTab() {
   });
   const [categoryServices, setCategoryServices] = useState([]);
   const [loadingServices, setLoadingServices] = useState(false);
+  const [listSearch, setListSearch] = useState("");
 
   const fetchEmployees = async () => {
     const res = await fetch("/api/employee");
     const data = await res.json();
-    setEmployees(data);
+    setEmployees(Array.isArray(data) ? data : []);
+  };
+
+  const employeeListMatches = (emp, rawQ) => {
+    const q = rawQ.trim().toLowerCase();
+    if (!q) return true;
+    const name = (emp.name || "").toLowerCase();
+    const email = (emp.email || "").toLowerCase();
+    const phoneRaw = String(emp.phone || "").toLowerCase();
+    const phoneDigits = phoneRaw.replace(/\D/g, "");
+    const qDigits = q.replace(/\D/g, "");
+    const salon = (emp.salon?.name || "").toLowerCase();
+    if (name.includes(q) || email.includes(q) || phoneRaw.includes(q) || salon.includes(q)) return true;
+    if (qDigits.length >= 3 && phoneDigits.includes(qDigits)) return true;
+    return false;
   };
 
   const fetchSalons = async () => {
@@ -196,6 +211,9 @@ export default function EmployeeTab() {
     fetchEmployees();
   };
 
+  const safeEmployees = Array.isArray(employees) ? employees : [];
+  const filteredEmployees = safeEmployees.filter((e) => employeeListMatches(e, listSearch));
+
   return (
     <div>
       <div style={styles.pageHeader}>
@@ -230,15 +248,42 @@ export default function EmployeeTab() {
         </button>
       </div>
 
-      {employees.length === 0 ? (
+      {safeEmployees.length > 0 && (
+        <div style={{ marginBottom: 16, maxWidth: 420 }}>
+          <label htmlFor="employee-list-search" style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#374151", fontSize: 14 }}>
+            Search employees
+          </label>
+          <input
+            id="employee-list-search"
+            type="search"
+            value={listSearch}
+            onChange={(e) => setListSearch(e.target.value)}
+            placeholder="Name, email, phone or salon…"
+            style={{
+              width: "100%",
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid #e5e7eb",
+              fontSize: 15,
+              boxSizing: "border-box",
+            }}
+          />
+        </div>
+      )}
+
+      {safeEmployees.length === 0 ? (
         <div style={styles.emptyState}>
           <p style={styles.emptyStateText}>No employees yet. Add your first employee!</p>
+        </div>
+      ) : filteredEmployees.length === 0 ? (
+        <div style={styles.emptyState}>
+          <p style={styles.emptyStateText}>No employees match your search.</p>
         </div>
       ) : (
         <>
         {/* Mobile cards */}
         <div className={mobile.mobileCards}>
-          {employees.map((employee) => {
+          {filteredEmployees.map((employee) => {
             const statusBg = employee.active ? "#dcfce7" : "#fee2e2";
             const statusColor = employee.active ? "#166534" : "#991b1b";
             const salonName = employee.salon?.name || "N/A";
@@ -293,7 +338,7 @@ export default function EmployeeTab() {
               </tr>
             </thead>
             <tbody>
-              {employees.map((employee) => (
+              {filteredEmployees.map((employee) => (
                 <tr key={employee._id}>
                   <td style={styles.table.td}>
                     {employee.image ? (

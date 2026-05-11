@@ -95,6 +95,28 @@
   color: #1f2937;
 }
 
+.ctaRow {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.secondaryBtn {
+  display: inline-flex;
+  width: 100%;
+  justify-content: center;
+  align-items: center;
+  min-height: 42px;
+  border-radius: 999px;
+  border: 2px solid var(--accent-terracotta);
+  background: #fff;
+  color: var(--accent-terracotta);
+  font-weight: 700;
+  cursor: pointer;
+  font-size: 14px;
+}
+
 .cta {
   display: inline-flex;
   width: 100%;

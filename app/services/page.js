@@ -2,11 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useDispatch } from "react-redux";
+import toast from "react-hot-toast";
+import { addBookingService } from "@/lib/bookingCartSlice";
 import styles from "./services.module.css";
 
 const DEFAULT_SERVICE_IMAGE = "/DEFAULT_SERVICE_IMAGE.webp";
 
 export default function AllServicesPage() {
+  const dispatch = useDispatch();
   const [services, setServices] = useState([]);
   const [categories, setCategories] = useState([]);
   const [query, setQuery] = useState("");
@@ -105,9 +109,21 @@ export default function AllServicesPage() {
                     <span>{service.duration} min</span>
                     <span>₹{service.price}</span>
                   </div>
-                  <Link href={`/book?service=${service._id}`} className={styles.cta}>
-                    Book Now
-                  </Link>
+                  <div className={styles.ctaRow}>
+                    <button
+                      type="button"
+                      className={styles.secondaryBtn}
+                      onClick={() => {
+                        dispatch(addBookingService(service._id));
+                        toast.success("Added to booking cart");
+                      }}
+                    >
+                      Add to cart
+                    </button>
+                    <Link href={`/book?service=${service._id}`} className={styles.cta}>
+                      Continue to book
+                    </Link>
+                  </div>
                 </div>
               </article>
             );

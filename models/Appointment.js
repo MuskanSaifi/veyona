@@ -15,7 +15,8 @@ const appointmentSchema = new mongoose.Schema(
     employee: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Employee",
-      required: true,
+      required: false,
+      default: undefined,
     },
     // Primary service (for backward compatibility and simple views)
     service: {

@@ -2,9 +2,12 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useDispatch, useSelector } from "react-redux";
-import Link from "next/link";
 import toast from "react-hot-toast";
-import { setBookingServices, addBookingService, removeBookingService } from "@/lib/bookingCartSlice";
+import {
+  setBookingServices,
+  addBookingService,
+  removeBookingService,
+} from "@/lib/bookingCartSlice";
 
 // Placeholder when service has no image
 const DEFAULT_SERVICE_IMAGE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Crect fill='%23e5e7eb' width='80' height='80'/%3E%3Ctext fill='%239ca3af' font-family='sans-serif' font-size='10' x='50%25' y='50%25' text-anchor='middle' dy='.3em'%3ENo Image%3C/text%3E%3C/svg%3E";
@@ -47,18 +50,15 @@ function ServicePriceDisplay({ service, compact }) {
   );
 }
 
-const TYPE_OPTIONS = [
-  { value: "salon-beauty", label: "Beauty" },
-  { value: "salon-aesthetics", label: "Aesthetics" },
-  { value: "dentist", label: "Dental" },
-  { value: "tattoo", label: "Tattoo" },
-];
-
 export default function BookSection() {
   const router = useRouter();
   const dispatch = useDispatch();
   const reduxServiceIds = useSelector((state) => state.bookingCart.serviceIds) || [];
-  const [categories, setCategories] = useState([]);
+  /** Latest selected category id — avoids stale closure in fetchServices after await. */
+  const selectedCategoryIdRef = useRef(null);
+  /** Active booking categories from admin (one tab per category — correct services per tab). */
+  const [bookCategories, setBookCategories] = useState([]);
+  const [activeBookCategoryId, setActiveBookCategoryId] = useState(null);
   const [services, setServices] = useState([]);
   const [salons, setSalons] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -66,7 +66,6 @@ export default function BookSection() {
   const [selectedService, setSelectedService] = useState(null);
   const [selectedSalon, setSelectedSalon] = useState(null);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
-  const [typeFilter, setTypeFilter] = useState("salon-beauty");
   const [loading, setLoading] = useState(false);
   const [serviceSearchQuery, setServiceSearchQuery] = useState("");
   const [serviceDropdownOpen, setServiceDropdownOpen] = useState(false);
@@ -94,23 +93,61 @@ export default function BookSection() {
     }
   }, [serviceDropdownOpen]);
 
+  // Load all active categories once; each becomes a "Select type" tab with its admin name.
   useEffect(() => {
-    fetchCategories();
-  }, [typeFilter]);
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/category");
+        const data = await res.json();
+        if (cancelled) return;
+        const active = Array.isArray(data) ? data.filter((c) => c.active) : [];
+        const order = { salon: 0, dentist: 1, tattoo: 2 };
+        active.sort((a, b) => {
+          const ta = order[a.type] ?? 99;
+          const tb = order[b.type] ?? 99;
+          if (ta !== tb) return ta - tb;
+          const ca = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const cb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          if (ca !== cb) return ca - cb;
+          return String(a.name || "").localeCompare(String(b.name || ""), undefined, {
+            sensitivity: "base",
+          });
+        });
+        setBookCategories(active);
+        setActiveBookCategoryId((prev) => {
+          const ids = new Set(active.map((c) => String(c._id)));
+          if (prev && ids.has(prev)) return prev;
+          const firstSalon = active.find((c) => c.type === "salon");
+          if (firstSalon) return String(firstSalon._id);
+          return active[0] ? String(active[0]._id) : null;
+        });
+      } catch (error) {
+        console.error("Error fetching book categories:", error);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  // Whenever categories change (for any type – beauty, aesthetics, dentist, tattoo),
-  // pick the first active category as the current one and load its services.
   useEffect(() => {
-    if (categories.length > 0) {
-      // Always pick the first category for the newly loaded type.
-      // This avoids stale "selected" service/category when users switch types.
-      setSelectedCategory(categories[0]);
-    } else {
-      setServices([]);
+    if (!activeBookCategoryId || bookCategories.length === 0) {
       setSelectedCategory(null);
+      setServices([]);
       setSelectedService(null);
+      return;
     }
-  }, [categories, typeFilter]);
+    const cat = bookCategories.find((c) => String(c._id) === activeBookCategoryId);
+    setSelectedCategory(cat || null);
+    if (!cat) setSelectedService(null);
+  }, [activeBookCategoryId, bookCategories]);
+
+  useEffect(() => {
+    selectedCategoryIdRef.current = selectedCategory?._id
+      ? String(selectedCategory._id)
+      : null;
+  }, [selectedCategory]);
 
   // Load services for the selected category for all types (including dentist)
   useEffect(() => {
@@ -118,7 +155,7 @@ export default function BookSection() {
       setSelectedService(null);
       setSelectedSalon(null);
       setSelectedEmployee(null);
-      fetchServices(selectedCategory._id);
+      fetchServices(String(selectedCategory._id));
     } else {
       setServices([]);
       setSelectedService(null);
@@ -193,15 +230,13 @@ export default function BookSection() {
       if (currentType !== typeFilter) return;
       let activeCategories = data.filter((cat) => cat.active);
 
-      // For salon segments, narrow down by category name
-      if (subSegment === "beauty") {
-        activeCategories = activeCategories.filter(
-          (cat) => cat.name?.toLowerCase() === "beauty"
+      // For salon segments, narrow down by category name (flexible; DB names vary)
+      if (subSegment === "beauty" || subSegment === "aesthetics") {
+        const narrowed = activeCategories.filter((cat) =>
+          salonCategoryMatchesSegment(cat.name, subSegment)
         );
-      } else if (subSegment === "aesthetics") {
-        activeCategories = activeCategories.filter(
-          (cat) => cat.name?.toLowerCase() === "aesthetics"
-        );
+        // If nothing matched naming rules, show all salon categories so booking still works
+        activeCategories = narrowed.length > 0 ? narrowed : activeCategories;
       }
 
       // Dental UX: don't show unrelated salon/clinic groupings as categories.
@@ -223,13 +258,13 @@ export default function BookSection() {
   };
 
   const fetchServices = async (categoryId) => {
+    const requestedId = String(categoryId);
     try {
-      const currentCategoryId = categoryId;
       // Fetch all services including children to check for parent-child relationships
-      const res = await fetch(`/api/service?categoryId=${categoryId}&includeChildren=true`);
+      const res = await fetch(`/api/service?categoryId=${requestedId}&includeChildren=true`);
       const data = await res.json();
-      // If user changed selectedCategory while request was in-flight, ignore this response
-      if (!selectedCategory || selectedCategory._id !== currentCategoryId) {
+      // Ignore stale responses (tab switch / category change while fetch was in flight)
+      if (selectedCategoryIdRef.current !== requestedId) {
         return;
       }
       const activeServices = data.filter((s) => s.active);
@@ -253,7 +288,11 @@ export default function BookSection() {
       // Filter to only show bookable services (leaf nodes - have price, duration, and are NOT parents)
       const bookableServices = activeServices.filter((service) => {
         const serviceId = service._id.toString();
-        const hasPriceAndDuration = service.price && service.duration;
+        const hasPriceAndDuration =
+          service.price != null &&
+          Number(service.price) >= 0 &&
+          service.duration != null &&
+          Number(service.duration) >= 0;
         const isNotParent = !parentServiceIds.has(serviceId);
         // Only show services that are bookable AND are not parent services
         return hasPriceAndDuration && isNotParent;
@@ -394,38 +433,48 @@ export default function BookSection() {
           }}
         >
 
-          {/* Select Type */}
+          {/* Select type: one tab per admin category (name + services match that category) */}
           <div className="mb-6">
-            <label style={labelStyle}>Select Type</label>
-            <div className="flex gap-3 flex-wrap">
-              {TYPE_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => {
-                    setTypeFilter(opt.value);
-                    // Immediately clear old state so other category's services
-                    // don't flash while new data is loading
-                    setCategories([]);
-                    setServices([]);
-                    setServiceDropdownOpen(false);
-                    setServiceSearchQuery("");
-                    setSelectedCategory(null);
-                    setSelectedService(null);
-                    setSelectedSalon(null);
-                    setSelectedEmployee(null);
-                  }}
-                  className="flex-1 min-w-[100px] py-3 px-5 rounded-xl font-medium text-[15px] transition-all duration-200
-                    hover:border-[var(--accent-terracotta)]/50"
-                  style={{
-                    background: typeFilter === opt.value ? "var(--bg-footer-dark)" : "transparent",
-                    color: typeFilter === opt.value ? "#ffffff" : "var(--text-dark)",
-                    border: typeFilter === opt.value ? "none" : "1px solid var(--border-light)",
-                  }}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
+            <label style={labelStyle}>Select type</label>
+            {bookCategories.length === 0 ? (
+              <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+                No active categories yet. Add categories in the admin panel.
+              </p>
+            ) : (
+              <div className="flex gap-3 flex-wrap">
+                {bookCategories.map((cat) => {
+                  const id = String(cat._id);
+                  const isActive = activeBookCategoryId === id;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      title={cat.name || ""}
+                      onClick={() => {
+                        setActiveBookCategoryId(id);
+                        setServices([]);
+                        setServiceDropdownOpen(false);
+                        setServiceSearchQuery("");
+                        setSelectedService(null);
+                        setSelectedSalon(null);
+                        setSelectedEmployee(null);
+                        setCartServices([]);
+                        setCartQty({});
+                        dispatch(setBookingServices([]));
+                      }}
+                      className="flex-1 min-w-[100px] py-3 px-4 rounded-xl font-medium text-[14px] sm:text-[15px] transition-all duration-200 hover:border-[var(--accent-terracotta)]/50 leading-snug text-center"
+                      style={{
+                        background: isActive ? "var(--bg-footer-dark)" : "transparent",
+                        color: isActive ? "#ffffff" : "var(--text-dark)",
+                        border: isActive ? "none" : "1px solid var(--border-light)",
+                      }}
+                    >
+                      {cat.name || "Category"}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* Form grid - 2 columns on desktop */}

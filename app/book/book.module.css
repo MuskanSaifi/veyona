@@ -41,6 +41,31 @@
   margin: 0;
 }
 
+/* Single selected service: show image + details (multi-cart rows already include a thumbnail) */
+.singleServiceRow {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+
+.singleServiceImgLg {
+  width: min(120px, 30vw);
+  height: min(120px, 30vw);
+  min-width: 72px;
+  min-height: 72px;
+  border-radius: 12px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: #e5e7eb;
+}
+
+.singleServiceMeta {
+  font-size: 13px;
+  color: #6b7280;
+  margin-top: 4px;
+}
+
 .servicesList {
   margin-bottom: 12px;
   display: grid;

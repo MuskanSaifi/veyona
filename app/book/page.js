@@ -1,11 +1,15 @@
 "use client";
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useState, Suspense, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { useDispatch } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import toast from "react-hot-toast";
 import { setBookingServices } from "@/lib/bookingCartSlice";
+import { store } from "@/lib/store";
 import LocationPickerModal from "@/app/components/LocationPickerModal";
 import styles from "./book.module.css";
+
+const BOOK_SERVICE_PLACEHOLDER_IMG =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Crect fill='%23e5e7eb' width='120' height='120'/%3E%3Ctext fill='%239ca3af' font-family='sans-serif' font-size='11' x='50%25' y='50%25' text-anchor='middle' dy='.3em'%3ENo Image%3C/text%3E%3C/svg%3E";
 
 function formatTimeSlot12h(time24) {
   const [hStr, mStr] = (time24 || "").split(":");
@@ -17,10 +21,21 @@ function formatTimeSlot12h(time24) {
   return `${String(hour12).padStart(2, "0")}:${String(m).padStart(2, "0")} ${period}`;
 }
 
+function serviceIdStr(id) {
+  if (id == null || id === "") return "";
+  return String(id).trim();
+}
+
 function BookPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const dispatch = useDispatch();
+  const bookingServiceIds = useSelector((state) => state.bookingCart.serviceIds) || [];
+  const idsKey = useMemo(
+    () => [...bookingServiceIds].map((x) => String(x)).sort().join(","),
+    [bookingServiceIds]
+  );
+
   const serviceId = searchParams.get("service");
   const servicesParam = searchParams.get("services"); // comma-separated for multi-service bookings
   const quantityParam = searchParams.get("quantity"); // for single-service flow
@@ -28,7 +43,9 @@ function BookPageContent() {
 
   const [service, setService] = useState(null); // primary service (first)
   const [servicesList, setServicesList] = useState([]); // all selected services
+  const [loadingCart, setLoadingCart] = useState(true);
   const [employees, setEmployees] = useState([]);
+  const [fallbackSalonId, setFallbackSalonId] = useState(null);
   const [timeSlots, setTimeSlots] = useState([]);
   const [serviceQty, setServiceQty] = useState({}); // { [serviceId]: number }
   const [formData, setFormData] = useState({
@@ -84,23 +101,114 @@ function BookPageContent() {
   };
 
   useEffect(() => {
-    if (serviceId || servicesParam) {
-      fetchServicesForBooking();
-    }
     fetchUser();
-  }, [serviceId, servicesParam]);
+  }, []);
 
-  // Sync booking services to Redux for real-time header count
+  // Visiting /book?service=… or ?services=… merges into the global cart (add from anywhere).
   useEffect(() => {
-    const ids = servicesParam
-      ? servicesParam.split(",").map((id) => id.trim()).filter(Boolean)
+    const fromUrl = servicesParam
+      ? servicesParam
+          .split(",")
+          .map((id) => id.trim())
+          .filter(Boolean)
+          .map((id) => serviceIdStr(id))
+          .filter(Boolean)
       : serviceId
-      ? [serviceId]
+      ? [serviceIdStr(serviceId)].filter(Boolean)
       : [];
-    if (ids.length > 0) dispatch(setBookingServices(ids));
+    if (fromUrl.length === 0) return;
+    const cur = (store.getState().bookingCart.serviceIds || []).map((x) => serviceIdStr(x)).filter(Boolean);
+    const merged = [...new Set([...cur, ...fromUrl])];
+    const hasNew = fromUrl.some((id) => !cur.includes(id));
+    if (merged.length > cur.length || hasNew) {
+      dispatch(setBookingServices(merged));
+    }
   }, [serviceId, servicesParam, dispatch]);
 
-  // Load Razorpay checkout script
+  // Load services from the cart (Redux / localStorage), not only from URL.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const ids = (store.getState().bookingCart.serviceIds || [])
+        .map((x) => serviceIdStr(x))
+        .filter(Boolean);
+      if (!ids.length) {
+        if (!cancelled) {
+          setServicesList([]);
+          setService(null);
+          setLoadingCart(false);
+        }
+        return;
+      }
+      if (!cancelled) setLoadingCart(true);
+      try {
+        const parsedQty = (() => {
+          const map = {};
+          if (serviceQuantitiesParam) {
+            const pairs = String(serviceQuantitiesParam)
+              .split(",")
+              .map((x) => x.trim())
+              .filter(Boolean);
+            for (const p of pairs) {
+              const [id, qtyStr] = p.split(":");
+              const idNorm = serviceIdStr(id);
+              const q = Math.floor(Number(qtyStr));
+              if (idNorm && Number.isFinite(q)) map[idNorm] = Math.max(1, Math.min(20, q));
+            }
+          } else if (serviceId && quantityParam) {
+            const idNorm = serviceIdStr(serviceId);
+            const q = Math.floor(Number(quantityParam));
+            if (idNorm && Number.isFinite(q)) map[idNorm] = Math.max(1, Math.min(20, q));
+          }
+          return map;
+        })();
+
+        const results = await Promise.all(
+          ids.map((id) =>
+            fetch(`/api/service/${id}`)
+              .then((r) => (r.ok ? r.json() : null))
+              .catch(() => null)
+          )
+        );
+        const validServices = results.filter(Boolean);
+        if (cancelled) return;
+        if (!validServices.length) {
+          toast.error("Selected services could not be loaded");
+          dispatch(setBookingServices([]));
+          setServicesList([]);
+          setService(null);
+          return;
+        }
+        setServicesList(validServices);
+        setService(validServices[0]);
+        setServiceQty((prev) => {
+          const next = { ...(prev || {}) };
+          for (const s of validServices) {
+            const sid = serviceIdStr(s._id);
+            if (!sid) continue;
+            const fromUrl = parsedQty?.[sid];
+            if (fromUrl != null) next[sid] = fromUrl;
+            else if (next[sid] == null) next[sid] = 1;
+          }
+          for (const k of Object.keys(next)) {
+            if (!validServices.some((s) => serviceIdStr(s._id) === serviceIdStr(k))) {
+              delete next[k];
+            }
+          }
+          return next;
+        });
+      } catch (error) {
+        toast.error("Error loading services");
+        console.error(error);
+      } finally {
+        if (!cancelled) setLoadingCart(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [idsKey, serviceQuantitiesParam, quantityParam, serviceId, dispatch]);
+
   useEffect(() => {
     if (paymentPlan === "book_now_pay_later") return;
     if (typeof window === "undefined") return;
@@ -126,9 +234,49 @@ function BookPageContent() {
   }, [paymentPlan]);
 
   const getQtyForService = (id) => {
-    const raw = Number(serviceQty?.[id]);
+    const key = serviceIdStr(id);
+    const raw = Number(serviceQty?.[key]);
     const q = Number.isFinite(raw) ? Math.floor(raw) : 1;
     return Math.max(1, Math.min(20, q));
+  };
+
+  const removeServiceFromCart = (svc) => {
+    const sid = serviceIdStr(svc?._id);
+    if (!sid) return;
+    const updated = servicesList.filter((item) => serviceIdStr(item._id) !== sid);
+    if (updated.length === 0) {
+      dispatch(setBookingServices([]));
+      setServicesList([]);
+      setService(null);
+      setServiceQty({});
+      setTimeSlots([]);
+      setFormData((prev) => ({ ...prev, time: "" }));
+      toast.success("Cart cleared. Add more services from anywhere on the site.");
+      router.push("/services");
+      return;
+    }
+    setServicesList(updated);
+    setService(updated[0]);
+    setServiceQty((prev) => {
+      const next = { ...(prev || {}) };
+      delete next[sid];
+      for (const keep of updated) {
+        const kid = serviceIdStr(keep._id);
+        if (kid && next[kid] == null) next[kid] = 1;
+      }
+      return next;
+    });
+    setTimeSlots([]);
+    setFormData((prev) => ({ ...prev, time: "" }));
+    dispatch(setBookingServices(updated.map((x) => serviceIdStr(x._id)).filter(Boolean)));
+    if (updated.length === 1) {
+      const only = serviceIdStr(updated[0]._id);
+      router.replace(`/book?service=${only}&quantity=${getQtyForService(only)}`);
+    } else {
+      const idList = updated.map((x) => serviceIdStr(x._id)).filter(Boolean);
+      const pairs = idList.map((id) => `${id}:${getQtyForService(id)}`).join(",");
+      router.replace(`/book?services=${idList.join(",")}&serviceQuantities=${encodeURIComponent(pairs)}`);
+    }
   };
 
   const baseSubtotal = (servicesList || []).reduce(
@@ -139,6 +287,9 @@ function BookPageContent() {
   const discountAmount = Number(couponApplied?.discountAmount || 0);
   const totalPayable = Math.max(0, subtotal - discountAmount);
   const isDentalService = service?.category?.type === "dentist";
+  /** In-person home/salon visit: full address required. Video & dental still show map for easy entry (optional). */
+  const needsStructuredCustomerAddress =
+    !service?.isVideoConsultation && !isDentalService;
   const clinicAddress =
     service?.clinicAddress ||
     [service?.clinic?.address, service?.clinic?.city, service?.clinic?.state, service?.clinic?.pincode]
@@ -232,77 +383,46 @@ function BookPageContent() {
     }
   }, [formData.employee, formData.date, JSON.stringify(serviceQty)]);
 
-  const fetchServicesForBooking = async () => {
-    try {
-      const ids = (servicesParam
-        ? servicesParam.split(",").filter(Boolean)
-        : (serviceId ? [serviceId] : [])
-      );
-      if (!ids.length) return;
-
-      const parsedQty = (() => {
-        const map = {};
-        if (serviceQuantitiesParam) {
-          const pairs = String(serviceQuantitiesParam).split(",").map((x) => x.trim()).filter(Boolean);
-          for (const p of pairs) {
-            const [id, qtyStr] = p.split(":");
-            const q = Math.floor(Number(qtyStr));
-            if (id && Number.isFinite(q)) map[id] = Math.max(1, Math.min(20, q));
-          }
-        } else if (serviceId && quantityParam) {
-          const q = Math.floor(Number(quantityParam));
-          if (Number.isFinite(q)) map[serviceId] = Math.max(1, Math.min(20, q));
-        }
-        return map;
-      })();
-
-      const results = await Promise.all(
-        ids.map((id) =>
-          fetch(`/api/service/${id}`)
-            .then((r) => (r.ok ? r.json() : null))
-            .catch(() => null)
-        )
-      );
-      const validServices = results.filter(Boolean);
-      if (!validServices.length) {
-        toast.error("Selected services could not be loaded");
-        return;
-      }
-      setServicesList(validServices);
-      setService(validServices[0]);
-      setServiceQty((prev) => {
-        const next = { ...(prev || {}) };
-        for (const s of validServices) {
-          if (s?._id) {
-            const fromUrl = parsedQty?.[s._id];
-            if (fromUrl != null) next[s._id] = fromUrl;
-            else if (next[s._id] == null) next[s._id] = 1;
-          }
-        }
-        // remove qty entries for services no longer selected
-        for (const k of Object.keys(next)) {
-          if (!validServices.some((s) => s?._id?.toString?.() === k?.toString?.())) {
-            delete next[k];
-          }
-        }
-        return next;
-      });
-    } catch (error) {
-      toast.error("Error loading services");
-      console.error(error);
-    }
-  };
-
   const fetchEmployees = async () => {
-    const primaryServiceId = service?._id || serviceId;
+    const primaryServiceId = serviceIdStr(service?._id || serviceId);
     if (!primaryServiceId) return;
     try {
+      setFallbackSalonId(null);
       const res = await fetch(`/api/employee?serviceId=${primaryServiceId}`);
       const data = await res.json();
-      const availableEmployees = (data || []).filter((emp) => emp.active);
-      setEmployees(availableEmployees);
-      if (availableEmployees.length > 0) {
-        setFormData((prev) => ({ ...prev, employee: availableEmployees[0]._id }));
+      let list = (data || []).filter((emp) => emp.active);
+
+      if (list.length === 0) {
+        const type = service?.category?.type;
+        if (type) {
+          const sr = await fetch(`/api/salon?type=${type}`);
+          const salons = await sr.json();
+          const activeSalons = (salons || []).filter((s) => s.active);
+          if (activeSalons[0]?._id) setFallbackSalonId(activeSalons[0]._id);
+          const collected = [];
+          for (const sal of activeSalons.slice(0, 12)) {
+            const er = await fetch(`/api/employee?salonId=${sal._id}`);
+            const emps = er.ok ? await er.json() : [];
+            for (const e of emps || []) {
+              if (e.active) collected.push(e);
+            }
+          }
+          const seen = new Set();
+          list = collected.filter((e) => {
+            const id = e._id?.toString();
+            if (!id || seen.has(id)) return false;
+            seen.add(id);
+            return true;
+          });
+        }
+      }
+
+      setEmployees(list);
+      if (list.length > 0) {
+        setFormData((prev) => ({ ...prev, employee: list[0]._id }));
+        setFallbackSalonId(null);
+      } else {
+        setFormData((prev) => ({ ...prev, employee: "" }));
       }
     } catch (error) {
       console.error("Error fetching employees:", error);
@@ -314,10 +434,12 @@ function BookPageContent() {
     try {
       const ids =
         servicesList.length > 0
-          ? servicesList.map((s) => s._id)
-          : (servicesParam
-              ? servicesParam.split(",").map((id) => id.trim()).filter(Boolean)
-              : (serviceId ? [serviceId] : []));
+          ? servicesList.map((s) => serviceIdStr(s._id)).filter(Boolean)
+          : servicesParam
+            ? servicesParam.split(",").map((id) => serviceIdStr(id)).filter(Boolean)
+            : serviceId
+              ? [serviceIdStr(serviceId)].filter(Boolean)
+              : [];
       const params = new URLSearchParams({
         employeeId: formData.employee,
         date: formData.date,
@@ -327,9 +449,7 @@ function BookPageContent() {
         params.append("quantity", String(getQtyForService(ids[0])));
       } else if (ids.length > 1) {
         params.append("serviceIds", ids.join(","));
-        const pairs = ids
-          .map((id) => `${id}:${getQtyForService(id)}`)
-          .join(",");
+        const pairs = ids.map((id) => `${id}:${getQtyForService(id)}`).join(",");
         params.append("serviceQuantities", pairs);
       }
 
@@ -355,13 +475,17 @@ function BookPageContent() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!formData.customerName || !formData.customerEmail || !formData.customerPhone || !formData.employee || !formData.date || !formData.time) {
+    if (!formData.customerName || !formData.customerEmail || !formData.customerPhone || !formData.date || !formData.time) {
       toast.error("Please fill all required fields");
       return;
     }
+    if (employees.length > 0 && !formData.employee) {
+      toast.error("Please select a staff member");
+      return;
+    }
 
-    // For non-dental in-person services, structured user address is required
-    if (!service?.isVideoConsultation && !isDentalService) {
+    // Home / salon visit: structured address required (video & dental: section visible but optional)
+    if (needsStructuredCustomerAddress) {
       const { addressLine1, city, state, pincode } = formData;
       if (!addressLine1?.trim() || !city?.trim() || !state?.trim() || !pincode?.trim()) {
         toast.error("Please fill complete address (building, city, state and pincode)");
@@ -382,10 +506,12 @@ function BookPageContent() {
       return;
     }
 
-    const selectedEmp = employees.find((e) => e._id === formData.employee || e._id?.toString() === formData.employee);
-    const salonId = selectedEmp?.salon?._id || selectedEmp?.salon;
+    const selectedEmp = employees.find(
+      (e) => e._id === formData.employee || e._id?.toString() === formData.employee
+    );
+    let salonId = selectedEmp?.salon?._id || selectedEmp?.salon || fallbackSalonId;
     if (!salonId) {
-      toast.error("Could not determine salon for selected employee");
+      toast.error("Could not determine salon for this booking");
       return;
     }
 
@@ -397,6 +523,7 @@ function BookPageContent() {
         body: JSON.stringify({
           ...formData,
           salon: salonId,
+          employee: formData.employee || undefined,
           service: service?._id || serviceId,
           services: servicesList.length > 0
             ? servicesList.map((s) => ({
@@ -407,7 +534,11 @@ function BookPageContent() {
           quantity: servicesList.length === 1
             ? getQtyForService(servicesList[0]?._id || (service?._id || serviceId))
             : 1,
-          location: isDentalService ? clinicAddress : (service?.isVideoConsultation ? undefined : formData.location),
+          location: isDentalService
+            ? clinicAddress
+            : formData.location?.trim()
+            ? formData.location.trim()
+            : undefined,
           couponCode: couponApplied?.code || undefined,
           paymentPlan,
         }),
@@ -421,7 +552,7 @@ function BookPageContent() {
       }
 
       // Book now, pay later (no online payment)
-      if (paymentPlan === "book_now_pay_later" || paymentPlan === "pay_at_salon") {
+      if (paymentPlan === "book_now_pay_later") {
         toast.success("Appointment booked. Pay later.");
         dispatch(setBookingServices([]));
         router.push(`/payment-success?mode=${paymentPlan}`);
@@ -506,10 +637,29 @@ function BookPageContent() {
     }
   };
 
-  if (!service) {
+  if (loadingCart) {
     return (
       <div style={{ minHeight: "80vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <p>Loading...</p>
+        <p>Loading your services…</p>
+      </div>
+    );
+  }
+
+  if (!service || servicesList.length === 0) {
+    return (
+      <div className={styles.page}>
+        <div className={styles.card}>
+          <h1 className={styles.title}>Book Appointment</h1>
+          <p style={{ color: "#6b7280", marginBottom: 12 }}>Your booking cart is empty.</p>
+          <p style={{ color: "#374151", lineHeight: 1.6 }}>
+            Browse{" "}
+            <a href="/services" style={{ color: "var(--accent-terracotta)", fontWeight: 700 }}>
+              All Services
+            </a>
+            , the homepage, or the header menu — use <strong>Add to cart</strong> or <strong>Book</strong> on any
+            service. Everything you add stays in this cart until you finish booking.
+          </p>
+        </div>
       </div>
     );
   }
@@ -535,12 +685,12 @@ function BookPageContent() {
             <div className={styles.servicesList}>
               {servicesList.map((s) => (
                 <div
-                  key={s._id}
+                  key={serviceIdStr(s._id)}
                   className={styles.serviceRow}
                 >
                   <div className={styles.serviceLeft}>
                     <img
-                      src={s.image || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Crect fill='%23e5e7eb' width='40' height='40'/%3E%3Ctext fill='%239ca3af' font-family='sans-serif' font-size='8' x='50%25' y='50%25' text-anchor='middle' dy='.3em'%3ENo Image%3C/text%3E%3C/svg%3E"}
+                      src={s.image || BOOK_SERVICE_PLACEHOLDER_IMG}
                       alt=""
                       className={styles.serviceImg}
                     />
@@ -558,7 +708,7 @@ function BookPageContent() {
                         onClick={() =>
                           setServiceQty((prev) => ({
                             ...(prev || {}),
-                            [s._id]: Math.max(1, getQtyForService(s._id) - 1),
+                            [serviceIdStr(s._id)]: Math.max(1, getQtyForService(s._id) - 1),
                           }))
                         }
                         className={styles.qtyBtn}
@@ -575,7 +725,7 @@ function BookPageContent() {
                           const v = Math.floor(Number(e.target.value));
                           setServiceQty((prev) => ({
                             ...(prev || {}),
-                            [s._id]: Number.isFinite(v) ? Math.max(1, Math.min(20, v)) : 1,
+                            [serviceIdStr(s._id)]: Number.isFinite(v) ? Math.max(1, Math.min(20, v)) : 1,
                           }));
                         }}
                         className={styles.qtyInput}
@@ -585,7 +735,7 @@ function BookPageContent() {
                         onClick={() =>
                           setServiceQty((prev) => ({
                             ...(prev || {}),
-                            [s._id]: Math.min(20, getQtyForService(s._id) + 1),
+                            [serviceIdStr(s._id)]: Math.min(20, getQtyForService(s._id) + 1),
                           }))
                         }
                         className={styles.qtyBtn}
@@ -596,26 +746,7 @@ function BookPageContent() {
                     </div>
                   <button
                     type="button"
-                    onClick={() => {
-                      const updated = servicesList.filter((item) => item._id !== s._id);
-                      if (!updated.length) {
-                        toast.error("At least one service is required");
-                        return;
-                      }
-                      setServicesList(updated);
-                      setService(updated[0]);
-                      setServiceQty((prev) => {
-                        const next = { ...(prev || {}) };
-                        delete next[s._id];
-                        for (const keep of updated) {
-                          if (keep?._id && next[keep._id] == null) next[keep._id] = 1;
-                        }
-                        return next;
-                      });
-                      setTimeSlots([]);
-                      setFormData((prev) => ({ ...prev, time: "" }));
-                      dispatch(setBookingServices(updated.map((x) => x._id)));
-                    }}
+                    onClick={() => removeServiceFromCart(s)}
                     className={styles.removeBtn}
                   >
                     Remove
@@ -625,9 +756,32 @@ function BookPageContent() {
               ))}
             </div>
           ) : (
-            service.description && (
-              <p style={{ color: "#6b7280", marginBottom: 15 }}>{service.description}</p>
-            )
+            <>
+              <div className={styles.singleServiceRow}>
+                <img
+                  src={service.image || BOOK_SERVICE_PLACEHOLDER_IMG}
+                  alt=""
+                  className={styles.singleServiceImgLg}
+                />
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  {service.duration != null && service.duration > 0 && (
+                    <div className={styles.singleServiceMeta}>{service.duration} min</div>
+                  )}
+                </div>
+              </div>
+              {service.description && (
+                <p style={{ color: "#6b7280", marginBottom: 15 }}>{service.description}</p>
+              )}
+              <div style={{ marginBottom: 12 }}>
+                <button
+                  type="button"
+                  onClick={() => removeServiceFromCart(service)}
+                  className={styles.removeBtn}
+                >
+                  Remove from cart
+                </button>
+              </div>
+            </>
           )}
           <div style={{ display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
             <span style={{ fontSize: 20, fontWeight: "bold", color: "var(--accent-terracotta)" }}>
@@ -734,11 +888,17 @@ function BookPageContent() {
             />
           </div>
 
-          {!service?.isVideoConsultation && !isDentalService && (
-            <div style={{ marginBottom: 20 }}>
+          <div style={{ marginBottom: 20 }}>
               <label style={{ display: "block", marginBottom: 8, fontWeight: 500 }}>
-                Address details *
+                {needsStructuredCustomerAddress ? "Address details *" : "Your address"}
               </label>
+              <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 10, lineHeight: 1.45 }}>
+                {isDentalService
+                  ? "Use the map to fill your details quickly. Your visit is at the clinic above; this address is optional and for contact or records."
+                  : service?.isVideoConsultation
+                  ? "Use the map to fill your details quickly. Address is optional for video consultations but helps our team coordinate."
+                  : "Choose a point on the map for an accurate address. Required for home or salon visits."}
+              </p>
 
               <div
                 style={{
@@ -751,7 +911,7 @@ function BookPageContent() {
                 }}
               >
                 <div style={{ fontSize: 13, color: "#6b7280" }}>
-                  Choose location from map for accurate address
+                  Map auto-fills street, city, state and pincode
                 </div>
                 <button
                   type="button"
@@ -824,7 +984,7 @@ function BookPageContent() {
               >
                 <div style={{ gridColumn: "1 / -1" }}>
                   <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: 500 }}>
-                    House / Building / Street *
+                    House / Building / Street{needsStructuredCustomerAddress ? " *" : ""}
                   </label>
                   <input
                     type="text"
@@ -835,7 +995,7 @@ function BookPageContent() {
                       })
                     }
                     style={inputStyle}
-                    required
+                    required={needsStructuredCustomerAddress}
                   />
                 </div>
                 <div>
@@ -855,7 +1015,7 @@ function BookPageContent() {
                 </div>
                 <div>
                   <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: 500 }}>
-                    City *
+                    City{needsStructuredCustomerAddress ? " *" : ""}
                   </label>
                   <input
                     type="text"
@@ -866,12 +1026,12 @@ function BookPageContent() {
                       })
                     }
                     style={inputStyle}
-                    required
+                    required={needsStructuredCustomerAddress}
                   />
                 </div>
                 <div>
                   <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: 500 }}>
-                    State *
+                    State{needsStructuredCustomerAddress ? " *" : ""}
                   </label>
                   <input
                     type="text"
@@ -882,12 +1042,12 @@ function BookPageContent() {
                       })
                     }
                     style={inputStyle}
-                    required
+                    required={needsStructuredCustomerAddress}
                   />
                 </div>
                 <div>
                   <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: 500 }}>
-                    Pincode *
+                    Pincode{needsStructuredCustomerAddress ? " *" : ""}
                   </label>
                   <input
                     type="text"
@@ -900,7 +1060,7 @@ function BookPageContent() {
                       })
                     }
                     style={inputStyle}
-                    required
+                    required={needsStructuredCustomerAddress}
                   />
                 </div>
               </div>
@@ -959,13 +1119,8 @@ function BookPageContent() {
                   </button>
                 )}
             </div>
-          )}
 
           <h3 style={{ fontSize: 20, fontWeight: 600, marginTop: 30, marginBottom: 20 }}>Appointment Details</h3>
-
-          {employees.length === 0 && (
-            <p style={{ color: "#ef4444", fontSize: 14, marginBottom: 20 }}>No employees available for this service. Please ask admin to assign employees in Dashboard → Employees.</p>
-          )}
 
           <div style={{ marginBottom: 20 }}>
             <label style={{ display: "block", marginBottom: 8, fontWeight: 500 }}>
@@ -978,7 +1133,6 @@ function BookPageContent() {
               style={inputStyle}
               min={(() => {
                 const d = new Date();
-                // Allow booking from today onwards
                 const y = d.getFullYear();
                 const m = String(d.getMonth() + 1).padStart(2, "0");
                 const day = String(d.getDate()).padStart(2, "0");
@@ -988,10 +1142,31 @@ function BookPageContent() {
             />
           </div>
 
+          {employees.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ display: "block", marginBottom: 8, fontWeight: 500 }}>
+                Staff / professional *
+              </label>
+              <select
+                value={formData.employee}
+                onChange={(e) => setFormData({ ...formData, employee: e.target.value, time: "" })}
+                style={inputStyle}
+                required
+              >
+                {employees.map((emp) => (
+                  <option key={emp._id} value={emp._id}>
+                    {emp.name}
+                    {emp.salon?.name ? ` — ${emp.salon.name}` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {formData.employee && formData.date && (
             <div style={{ marginBottom: 20 }}>
               <label style={{ display: "block", marginBottom: 8, fontWeight: 500 }}>
-                Select Time Slot *
+                Select time slot *
               </label>
               {loadingSlots ? (
                 <p style={{ color: "#6b7280" }}>Loading available slots...</p>
@@ -1016,6 +1191,25 @@ function BookPageContent() {
             </div>
           )}
 
+          {employees.length === 0 && formData.date && (
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ display: "block", marginBottom: 8, fontWeight: 500 }}>
+                Preferred time *
+              </label>
+              <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 8 }}>
+                No staff linked to this service online. Choose your preferred time; the salon will assign a professional when they confirm your booking.
+              </p>
+              <input
+                type="time"
+                step={300}
+                value={formData.time}
+                onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                style={inputStyle}
+                required
+              />
+            </div>
+          )}
+
           <div style={{ marginBottom: 30 }}>
             <label style={{ display: "block", marginBottom: 8, fontWeight: 500 }}>
               Notes (Optional)
@@ -1029,108 +1223,141 @@ function BookPageContent() {
           </div>
 
           {/* Pricing + Coupon + Payment plan */}
-          <div style={{ marginBottom: 26, background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 12, padding: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
-              <span style={{ color: "#374151", fontWeight: 600 }}>Subtotal</span>
-              <span style={{ color: "#111827", fontWeight: 600 }}>₹{subtotal}</span>
+          <div
+            style={{
+              marginBottom: 26,
+              background: "#fff",
+              border: "1px solid #e5e7eb",
+              borderRadius: 14,
+              padding: "18px 20px",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 10, alignItems: "baseline" }}>
+              <span style={{ color: "#4b5563", fontWeight: 500, fontSize: 15 }}>Subtotal</span>
+              <span style={{ color: "#111827", fontWeight: 600, fontSize: 15 }}>₹{subtotal}</span>
             </div>
             {discountAmount > 0 && (
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
-                <span style={{ color: "#374151" }}>
-                  Discount {couponApplied?.code ? `(${couponApplied.code})` : ""}
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
+                <span style={{ color: "#4b5563", fontSize: 14 }}>
+                  Discount{couponApplied?.code ? ` (${couponApplied.code})` : ""}
                 </span>
-                <span style={{ color: "#16a34a", fontWeight: 600 }}>-₹{discountAmount}</span>
+                <span style={{ color: "#16a34a", fontWeight: 600, fontSize: 14 }}>-₹{discountAmount}</span>
               </div>
             )}
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, paddingTop: 8, borderTop: "1px dashed #e5e7eb" }}>
-              <span style={{ color: "#111827", fontWeight: 700 }}>Total</span>
-              <span style={{ color: "var(--accent-terracotta)", fontWeight: 800 }}>₹{totalPayable}</span>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 12,
+                paddingTop: 12,
+                marginTop: 4,
+                borderTop: "1px solid #e5e7eb",
+                alignItems: "baseline",
+              }}
+            >
+              <span style={{ color: "#111827", fontWeight: 700, fontSize: 17 }}>Total</span>
+              <span style={{ color: "var(--accent-terracotta)", fontWeight: 800, fontSize: 20 }}>₹{totalPayable}</span>
             </div>
 
-            <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-              <input
-                value={couponInput}
-                onChange={(e) => setCouponInput(e.target.value)}
-                placeholder="Coupon code"
-                style={{ ...inputStyle, maxWidth: 220, padding: 10 }}
-              />
-              <button
-                type="button"
-                onClick={applyCoupon}
-                disabled={applyingCoupon || !couponInput.trim()}
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 10,
-                  border: "1px solid #d1d5db",
-                  background: applyingCoupon ? "#e5e7eb" : "white",
-                  cursor: applyingCoupon ? "not-allowed" : "pointer",
-                  fontWeight: 600,
-                }}
-              >
-                {applyingCoupon ? "Applying..." : "Apply"}
-              </button>
-              {couponApplied?.code && (
+            <div style={{ marginTop: 18 }}>
+              <div style={{ fontWeight: 600, marginBottom: 8, color: "#374151", fontSize: 14 }}>Coupon</div>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "stretch" }}>
+                <input
+                  value={couponInput}
+                  onChange={(e) => setCouponInput(e.target.value)}
+                  placeholder="Enter code"
+                  style={{ ...inputStyle, flex: "1 1 200px", minWidth: 0, padding: "11px 14px" }}
+                />
                 <button
                   type="button"
-                  onClick={() => setCouponApplied(null)}
+                  onClick={applyCoupon}
+                  disabled={applyingCoupon || !couponInput.trim()}
                   style={{
-                    padding: "10px 14px",
+                    padding: "11px 18px",
                     borderRadius: 10,
-                    border: "1px solid #fecaca",
-                    background: "#fee2e2",
-                    color: "#991b1b",
-                    cursor: "pointer",
-                    fontWeight: 700,
+                    border: "1px solid #d1d5db",
+                    background: applyingCoupon ? "#e5e7eb" : "#f9fafb",
+                    color: "#374151",
+                    cursor: applyingCoupon ? "not-allowed" : "pointer",
+                    fontWeight: 600,
+                    whiteSpace: "nowrap",
                   }}
                 >
-                  Remove coupon
+                  {applyingCoupon ? "Applying…" : "Apply"}
                 </button>
-              )}
+                {couponApplied?.code && (
+                  <button
+                    type="button"
+                    onClick={() => setCouponApplied(null)}
+                    style={{
+                      padding: "11px 16px",
+                      borderRadius: 10,
+                      border: "1px solid #fecaca",
+                      background: "#fef2f2",
+                      color: "#b91c1c",
+                      cursor: "pointer",
+                      fontWeight: 600,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
             </div>
 
-            <div style={{ marginTop: 14 }}>
-              <div style={{ fontWeight: 700, marginBottom: 8, color: "#111827" }}>Payment</div>
-              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                  <input
-                    type="radio"
-                    name="paymentPlan"
-                    value="half"
-                    checked={paymentPlan === "half"}
-                    onChange={() => setPaymentPlan("half")}
-                  />
-                  50% advance (₹{Math.ceil(totalPayable / 2)}) + remaining cash (₹{Math.max(0, totalPayable - Math.ceil(totalPayable / 2))})
-                </label>
-                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                  <input
-                    type="radio"
-                    name="paymentPlan"
-                    value="full"
-                    checked={paymentPlan === "full"}
-                    onChange={() => setPaymentPlan("full")}
-                  />
-                  Full payment (₹{totalPayable})
-                </label>
-                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                  <input
-                    type="radio"
-                    name="paymentPlan"
-                    value="book_now_pay_later"
-                    checked={paymentPlan === "book_now_pay_later"}
-                    onChange={() => setPaymentPlan("book_now_pay_later")}
-                  />
-                  Book Now, Pay Later
-                </label>
-                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                  <input
-                    type="radio"
-                    name="paymentPlan"
-                    value="pay_at_salon"
-                    checked={paymentPlan === "pay_at_salon"}
-                    onChange={() => setPaymentPlan("pay_at_salon")}
-                  />
-                  Pay at salon (cash on visit)
-                </label>
+            <div style={{ marginTop: 20 }}>
+              <div style={{ fontWeight: 700, marginBottom: 10, color: "#111827", fontSize: 15 }}>Payment method</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {[
+                  {
+                    value: "half",
+                    title: "50% advance now",
+                    hint: `Pay ₹${Math.ceil(totalPayable / 2)} online · remaining ₹${Math.max(0, totalPayable - Math.ceil(totalPayable / 2))} at visit`,
+                  },
+                  {
+                    value: "full",
+                    title: "Pay full amount now",
+                    hint: `₹${totalPayable} online`,
+                  },
+                  {
+                    value: "book_now_pay_later",
+                    title: "Book now, pay later",
+                    hint: "No online payment now — pay when you visit or as the salon confirms",
+                  },
+                ].map((opt) => (
+                  <label
+                    key={opt.value}
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: 12,
+                      cursor: "pointer",
+                      padding: "12px 14px",
+                      borderRadius: 10,
+                      border:
+                        paymentPlan === opt.value
+                          ? "2px solid var(--accent-terracotta)"
+                          : "1px solid #e5e7eb",
+                      background: paymentPlan === opt.value ? "#fffaf8" : "#fafafa",
+                      transition: "border-color 0.15s, background 0.15s",
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="paymentPlan"
+                      value={opt.value}
+                      checked={paymentPlan === opt.value}
+                      onChange={() => setPaymentPlan(opt.value)}
+                      style={{ marginTop: 3, flexShrink: 0 }}
+                    />
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: "block", fontWeight: 600, color: "#111827", fontSize: 15 }}>{opt.title}</span>
+                      <span style={{ display: "block", fontSize: 13, color: "#6b7280", marginTop: 2, lineHeight: 1.4 }}>{opt.hint}</span>
+                    </span>
+                  </label>
+                ))}
               </div>
             </div>
           </div>
@@ -1138,7 +1365,12 @@ function BookPageContent() {
           <div style={{ display: "flex", gap: 15 }}>
             <button
               type="submit"
-              disabled={loading || employees.length === 0}
+              disabled={
+                loading ||
+                !formData.date ||
+                !formData.time ||
+                (employees.length > 0 && !formData.employee)
+              }
               style={{
                 flex: 1,
                 padding: 15,
@@ -1151,7 +1383,7 @@ function BookPageContent() {
                 cursor: loading ? "not-allowed" : "pointer",
               }}
             >
-              {loading ? "Processing..." : paymentPlan === "book_now_pay_later" || paymentPlan === "pay_at_salon" ? "Book Appointment" : "Book & Pay"}
+              {loading ? "Processing..." : paymentPlan === "book_now_pay_later" ? "Book appointment" : "Book & pay"}
             </button>
             <button
               type="button"

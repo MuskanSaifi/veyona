@@ -18,12 +18,7 @@ export default function MobileStickyBookButton() {
   const shouldHide = hideOnRoutes.some((route) => pathname?.startsWith(route));
   if (shouldHide) return null;
 
-  const href =
-    bookingServiceIds.length === 1
-      ? `/book?service=${bookingServiceIds[0]}`
-      : bookingServiceIds.length > 1
-      ? `/book?services=${bookingServiceIds.join(",")}`
-      : "/services";
+  const href = bookingServiceIds.length > 0 ? "/book" : "/services";
 
   const label = bookingServiceIds.length > 0 ? `Book Now (${bookingServiceIds.length})` : "Book Now";
 

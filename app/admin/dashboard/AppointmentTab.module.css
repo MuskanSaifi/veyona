@@ -208,6 +208,47 @@
   color: white;
 }
 
+/* Confirm appointment: side-by-side actions, neutral cancel + primary confirm */
+.confirmEmployeeModalActions {
+  flex-direction: row !important;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px !important;
+  margin-top: 12px !important;
+  padding-top: 16px !important;
+}
+
+.confirmEmployeeModalActions button {
+  width: auto !important;
+  flex: 1 1 160px;
+  min-height: 44px;
+  padding: 10px 16px !important;
+}
+
+.confirmModalBtnSecondary {
+  background: #f8fafc !important;
+  color: #334155 !important;
+  border: 1px solid #cbd5e1 !important;
+}
+
+.confirmModalBtnPrimary {
+  background: linear-gradient(135deg, #ad6e5e 0%, #c17a68 100%) !important;
+  color: white !important;
+  border: none !important;
+}
+
+@media (max-width: 520px) {
+  .confirmEmployeeModalActions {
+    flex-direction: column !important;
+  }
+
+  .confirmEmployeeModalActions button {
+    width: 100% !important;
+    flex: none;
+  }
+}
+
 @media (min-width: 901px) {
   .tableWrapper {
     display: block !important;

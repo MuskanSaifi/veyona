@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import Appointment from "@/models/Appointment";
+import mongoose from "mongoose";
 import { saveAppointmentDoc } from "@/lib/saveAppointmentDoc";
 import { sendWhatsAppTemplate } from "@/lib/whatsapp";
 import jwt from "jsonwebtoken";
@@ -56,7 +57,7 @@ export async function PUT(req, { params }) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
     const body = await req.json();
-    const { status, date, time, notes, cashPaidDelta, action, refundNote } = body;
+    const { status, date, time, notes, cashPaidDelta, action, refundNote, employee: employeeFromBody } = body;
 
     // Do not populate before save — saving a populated doc can cause cast/validation errors.
     const appointment = await Appointment.findById(id);
@@ -65,6 +66,13 @@ export async function PUT(req, { params }) {
     }
 
     const wasConfirmed = appointment.status === "confirmed";
+
+    if (auth.role === "admin" && employeeFromBody) {
+      if (!mongoose.Types.ObjectId.isValid(employeeFromBody)) {
+        return NextResponse.json({ message: "Invalid employee id" }, { status: 400 });
+      }
+      appointment.employee = employeeFromBody;
+    }
     // Status/date/time/notes:
     // - admin can update all
     // - employee can mark ONLY their own appointment as "completed"
@@ -82,6 +90,15 @@ export async function PUT(req, { params }) {
         if (date) appointment.date = new Date(date);
         if (time) appointment.time = time;
         if (notes !== undefined) appointment.notes = notes;
+      }
+    }
+
+    if (auth.role === "admin" && status === "confirmed" && !wasConfirmed) {
+      if (!appointment.employee) {
+        return NextResponse.json(
+          { message: "Please select an employee before confirming this appointment." },
+          { status: 400 }
+        );
       }
     }
 
@@ -145,7 +162,7 @@ export async function PUT(req, { params }) {
 
     // When admin first confirms: send WhatsApp template to user (e.g. "Your Booking is Confirmed!")
     const userTemplateName = process.env.INTERAKT_TEMPLATE_BOOKING_CONFIRMED || "transactional_booking_confirmation";
-    if (status === "confirmed" && !wasConfirmed && updated.customer?.phone) {
+    if (status === "confirmed" && !wasConfirmed && updated.employee && updated.customer?.phone) {
       const dateStr = new Date(updated.date).toLocaleDateString("en-IN", {
         weekday: "short",
         day: "numeric",

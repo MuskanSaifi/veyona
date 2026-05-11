@@ -859,11 +859,7 @@ export default function Header() {
 
           {bookingServiceIds.length > 0 && (
       <Link
-      href={
-        bookingServiceIds.length === 1
-          ? `/book?service=${bookingServiceIds[0]}`
-          : `/book?services=${bookingServiceIds.join(",")}`
-      }
+      href="/book"
       className={styles.navLink}
       title="Back to book appointment"
     >
@@ -1227,11 +1223,7 @@ export default function Header() {
 
           {bookingServiceIds.length > 0 && (
             <Link
-              href={
-                bookingServiceIds.length === 1
-                  ? `/book?service=${bookingServiceIds[0]}`
-                  : `/book?services=${bookingServiceIds.join(",")}`
-              }
+              href="/book"
               className={styles.mobileNavLink}
               onClick={() => setShowMobileMenu(false)}
             >

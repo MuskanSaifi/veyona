@@ -128,7 +128,7 @@ export async function POST(req) {
       serviceIds = [service];
     }
 
-    if (!customerName || !customerEmail || !customerPhone || !salon || !employee || serviceIds.length === 0 || !date || !time) {
+    if (!customerName || !customerEmail || !customerPhone || !salon || serviceIds.length === 0 || !date || !time) {
       return NextResponse.json(
         { message: "All fields are required" },
         { status: 400 }
@@ -233,16 +233,23 @@ export async function POST(req) {
       await user.save();
     }
 
-    // Check for existing appointment at same time
-    const existing = await Appointment.findOne({
-      employee,
-      date: new Date(date),
-      time,
-      $or: [
-        { status: "confirmed" },
-        { status: "pending" },
-      ],
-    });
+    // Check for existing appointment at same time (per employee if assigned; else per customer + salon)
+    const dateD = new Date(date);
+    const conflictQuery = employee
+      ? {
+          employee,
+          date: dateD,
+          time,
+          $or: [{ status: "confirmed" }, { status: "pending" }],
+        }
+      : {
+          customer: customer._id,
+          salon,
+          date: dateD,
+          time,
+          $or: [{ status: "confirmed" }, { status: "pending" }],
+        };
+    const existing = await Appointment.findOne(conflictQuery);
 
     if (existing) {
       return NextResponse.json(
@@ -313,7 +320,7 @@ export async function POST(req) {
     const appointment = await Appointment.create({
       customer: customer._id,
       salon,
-      employee,
+      ...(employee ? { employee } : {}),
       service: primaryServiceId,
       services: servicesPayload,
       quantity: legacyQuantity,

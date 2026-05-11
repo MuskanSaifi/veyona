@@ -35,6 +35,13 @@ export default function AppointmentTab() {
   const [refundFilter, setRefundFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
 
+  /** Pending → confirmed: admin must pick employee in modal before WhatsApp / final confirm. */
+  const [confirmFlow, setConfirmFlow] = useState(null);
+  const [confirmSearch, setConfirmSearch] = useState("");
+  const [confirmEmployeeId, setConfirmEmployeeId] = useState("");
+  const [confirmEmpList, setConfirmEmpList] = useState([]);
+  const [confirmEmpLoading, setConfirmEmpLoading] = useState(false);
+
   const fetchAppointments = async () => {
     const res = await fetch("/api/appointment", fetchOpts);
     const data = await res.json();
@@ -45,12 +52,14 @@ export default function AppointmentTab() {
     fetchAppointments();
   }, []);
 
-  const updateStatus = async (id, status) => {
+  const updateStatus = async (id, status, employeeId) => {
+    const body = { status };
+    if (employeeId) body.employee = employeeId;
     const res = await fetch(`/api/appointment/${id}`, {
       ...fetchOpts,
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
+      body: JSON.stringify(body),
     });
     const data = await res.json().catch(() => ({}));
     if (res.status === 401) {
@@ -60,11 +69,82 @@ export default function AppointmentTab() {
     }
     if (res.ok) {
       toast.success("Status updated");
+      setConfirmFlow(null);
       fetchAppointments();
     } else {
       toast.error(data.message || `Failed to update status (${res.status})`);
     }
   };
+
+  const openConfirmEmployeeModal = (apt) => {
+    setViewMoreApt(null);
+    setConfirmFlow({ apt });
+    setConfirmSearch("");
+    const existing = apt.employee?._id?.toString?.() || apt.employee?.toString?.() || "";
+    setConfirmEmployeeId(existing);
+    setConfirmEmpList([]);
+    setConfirmEmpLoading(true);
+    const aptSalonId = apt.salon?._id?.toString?.() || apt.salon?.toString?.() || null;
+
+    // Full org list so admin can assign the lead to anyone (not only this booking's salon).
+    fetch(`/api/employee`, fetchOpts)
+      .then((r) => r.json())
+      .then((data) => {
+        const raw = Array.isArray(data) ? data : [];
+        const sameSalonRank = (em) => {
+          if (!aptSalonId) return 0;
+          const sid = em.salon?._id?.toString?.() || em.salon?.toString?.() || "";
+          return sid === aptSalonId ? 1 : 0;
+        };
+        raw.sort((a, b) => {
+          const s = sameSalonRank(b) - sameSalonRank(a);
+          if (s !== 0) return s;
+          const ac = a.active === b.active ? 0 : a.active ? -1 : 1;
+          if (ac !== 0) return ac;
+          return (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" });
+        });
+        setConfirmEmpList(raw);
+      })
+      .catch(() => toast.error("Could not load employees"))
+      .finally(() => setConfirmEmpLoading(false));
+  };
+
+  const handleAppointmentStatusChange = (apt, newStatus) => {
+    const prev = apt.status || "pending";
+    if (newStatus === "confirmed" && prev !== "confirmed") {
+      openConfirmEmployeeModal(apt);
+      return;
+    }
+    updateStatus(apt._id, newStatus);
+  };
+
+  const employeeMatchesConfirmSearch = (em, rawQ) => {
+    const q = rawQ.trim().toLowerCase();
+    if (!q) return true;
+    const name = (em.name || "").toLowerCase();
+    const email = (em.email || "").toLowerCase();
+    const phoneRaw = String(em.phone || "").toLowerCase();
+    const phoneDigits = phoneRaw.replace(/\D/g, "");
+    const qDigits = q.replace(/\D/g, "");
+    const salon = (em.salon?.name || "").toLowerCase();
+    if (name.includes(q) || email.includes(q) || phoneRaw.includes(q) || salon.includes(q)) return true;
+    if (qDigits.length >= 3 && phoneDigits.includes(qDigits)) return true;
+    return false;
+  };
+
+  const submitConfirmWithEmployee = async () => {
+    if (!confirmFlow?.apt) return;
+    if (!confirmEmployeeId) {
+      toast.error("Please select an employee first.");
+      return;
+    }
+    await updateStatus(confirmFlow.apt._id, "confirmed", confirmEmployeeId);
+  };
+
+  const statusSelectValue = (apt) =>
+    confirmFlow && confirmFlow.apt && confirmFlow.apt._id === apt._id
+      ? "pending"
+      : apt.status || "pending";
 
   const addCashPayment = async (id, onSuccess) => {
     const raw = prompt("Enter cash amount received (₹):");
@@ -737,8 +817,8 @@ export default function AppointmentTab() {
                           </button>
                         )}
                         <select
-                          value={apt.status}
-                          onChange={(e) => updateStatus(apt._id, e.target.value)}
+                          value={statusSelectValue(apt)}
+                          onChange={(e) => handleAppointmentStatusChange(apt, e.target.value)}
                           style={{
                             ...styles.table.btn,
                             background: "white",
@@ -1001,9 +1081,15 @@ export default function AppointmentTab() {
                           </button>
                         )}
                         <select
-                          value={apt.status}
+                          value={statusSelectValue(apt)}
                           onChange={async (e) => {
-                            await updateStatus(apt._id, e.target.value);
+                            const v = e.target.value;
+                            if (v === "confirmed" && (apt.status || "pending") !== "confirmed") {
+                              setViewMoreApt(null);
+                              openConfirmEmployeeModal(apt);
+                              return;
+                            }
+                            await updateStatus(apt._id, v);
                             setViewMoreApt(null);
                           }}
                         >
@@ -1037,6 +1123,137 @@ export default function AppointmentTab() {
             </div>
           </div>
         )}
+
+        {confirmFlow && (
+          <div
+            className={cardStyles.modalOverlay}
+            onClick={() => setConfirmFlow(null)}
+            role="presentation"
+          >
+            <div className={cardStyles.modal} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+              <div className={cardStyles.modalHeader}>
+                <h3 className={cardStyles.modalTitle}>Confirm appointment</h3>
+                <button
+                  type="button"
+                  className={cardStyles.modalClose}
+                  onClick={() => setConfirmFlow(null)}
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className={cardStyles.modalBody}>
+                <p style={{ fontSize: 14, color: "#475569", marginBottom: 12, lineHeight: 1.5 }}>
+                  Choose any team member for this booking (all employees are listed; this appointment’s salon
+                  appears first). WhatsApp to the customer and the selected employee is sent only after you
+                  confirm.
+                </p>
+                <label style={{ display: "block", marginBottom: 6, fontWeight: 600 }}>Search employees</label>
+                <input
+                  value={confirmSearch}
+                  onChange={(e) => setConfirmSearch(e.target.value)}
+                  placeholder="Name, phone, email or salon…"
+                  style={{
+                    width: "100%",
+                    padding: 10,
+                    borderRadius: 8,
+                    border: "1px solid #e2e8f0",
+                    marginBottom: 12,
+                    fontSize: 14,
+                  }}
+                />
+                {confirmEmpLoading ? (
+                  <p style={{ color: "#64748b" }}>Loading…</p>
+                ) : (
+                  <div
+                    style={{
+                      maxHeight: "min(52vh, 360px)",
+                      overflowY: "auto",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: 8,
+                    }}
+                  >
+                    {confirmEmpList.filter((em) => employeeMatchesConfirmSearch(em, confirmSearch)).length ===
+                    0 ? (
+                      <p style={{ padding: 12, color: "#94a3b8" }}>
+                        {confirmEmpList.length === 0
+                          ? "No employees found."
+                          : "No employees match your search."}
+                      </p>
+                    ) : (
+                      confirmEmpList
+                        .filter((em) => employeeMatchesConfirmSearch(em, confirmSearch))
+                        .map((em) => (
+                          <label
+                            key={em._id}
+                            style={{
+                              display: "flex",
+                              gap: 10,
+                              padding: "10px 12px",
+                              borderBottom: "1px solid #f1f5f9",
+                              cursor: "pointer",
+                              alignItems: "center",
+                              background:
+                                confirmEmployeeId === em._id.toString() ? "#fff7ed" : "white",
+                            }}
+                          >
+                            <input
+                              type="radio"
+                              name="confirmEmployee"
+                              checked={confirmEmployeeId === em._id.toString()}
+                              onChange={() => setConfirmEmployeeId(em._id.toString())}
+                            />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                                <span>{em.name}</span>
+                                {!em.active && (
+                                  <span
+                                    style={{
+                                      fontSize: 11,
+                                      fontWeight: 600,
+                                      color: "#b45309",
+                                      background: "#fef3c7",
+                                      padding: "2px 8px",
+                                      borderRadius: 999,
+                                    }}
+                                  >
+                                    Inactive
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ fontSize: 12, color: "#64748b" }}>
+                                {em.phone} · {em.email}
+                              </div>
+                              {em.salon?.name ? (
+                                <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>{em.salon.name}</div>
+                              ) : null}
+                            </div>
+                          </label>
+                        ))
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className={`${cardStyles.modalActions} ${cardStyles.confirmEmployeeModalActions}`}>
+                <button
+                  type="button"
+                  className={cardStyles.confirmModalBtnSecondary}
+                  onClick={() => setConfirmFlow(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className={cardStyles.confirmModalBtnPrimary}
+                  onClick={submitConfirmWithEmployee}
+                >
+                  Confirm with selected employee
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         </>
       )}
     </div>
