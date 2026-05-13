@@ -100,6 +100,11 @@ const appointmentSchema = new mongoose.Schema(
     },
     notes: String,
     location: String, // User's address for in-person appointments (not required for video consultation)
+    /** Employee taps start/end on dashboard — shown to admin */
+    serviceStartedAt: { type: Date },
+    serviceEndedAt: { type: Date },
+    /** Set when paid-in-full invoice was emailed (idempotency) */
+    billingEmailSentAt: { type: Date },
   },
   { timestamps: true }
 );

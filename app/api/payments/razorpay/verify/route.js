@@ -3,6 +3,7 @@ import crypto from "crypto";
 import connectDB from "@/lib/db";
 import Appointment from "@/models/Appointment";
 import { saveAppointmentDoc } from "@/lib/saveAppointmentDoc";
+import { sendPaidInvoiceEmailIfNeeded } from "@/lib/billingEmail";
 
 function verifySignature({ orderId, paymentId, signature }) {
   const secret = process.env.RAZORPAY_KEY_SECRET;
@@ -51,10 +52,8 @@ export async function POST(req) {
       paidCash: apt.payment.paidCash,
       totalPayable,
     });
-    // Only lock this slot after a successful online payment capture.
-    if (apt.payment.paidOnline > 0 || apt.payment.status === "paid") {
-      apt.status = "confirmed";
-    }
+    // Payment capture should not auto-confirm appointment.
+    // Booking remains pending until admin explicitly confirms from dashboard.
     apt.payments.push({
       kind: "online",
       amount: onlineDue,
@@ -66,6 +65,9 @@ export async function POST(req) {
     });
 
     await saveAppointmentDoc(apt);
+    sendPaidInvoiceEmailIfNeeded(String(appointmentId)).catch((err) =>
+      console.error("Billing invoice email:", err)
+    );
     return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json({ message: error.message }, { status: 500 });

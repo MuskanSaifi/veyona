@@ -4,6 +4,7 @@ import Appointment from "@/models/Appointment";
 import mongoose from "mongoose";
 import { saveAppointmentDoc } from "@/lib/saveAppointmentDoc";
 import { sendWhatsAppTemplate } from "@/lib/whatsapp";
+import { sendPaidInvoiceEmailIfNeeded } from "@/lib/billingEmail";
 import jwt from "jsonwebtoken";
 
 function getAuth(req) {
@@ -57,12 +58,58 @@ export async function PUT(req, { params }) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
     const body = await req.json();
-    const { status, date, time, notes, cashPaidDelta, action, refundNote, employee: employeeFromBody } = body;
+    const {
+      status,
+      date,
+      time,
+      notes,
+      cashPaidDelta,
+      action,
+      refundNote,
+      employee: employeeFromBody,
+      trackingAction,
+    } = body;
 
     // Do not populate before save — saving a populated doc can cause cast/validation errors.
     const appointment = await Appointment.findById(id);
     if (!appointment) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
+    /** Employee / admin: record when in-home or in-salon service actually started / ended */
+    if (trackingAction === "start_service" || trackingAction === "end_service") {
+      if (auth.role !== "admin" && auth.role !== "employee") {
+        return NextResponse.json({ message: "Not allowed" }, { status: 403 });
+      }
+      if (auth.role === "employee") {
+        const empId = appointment.employee?.toString?.();
+        if (empId !== auth.id?.toString?.()) {
+          return NextResponse.json({ message: "Not allowed" }, { status: 403 });
+        }
+      }
+      if (!["confirmed", "completed"].includes(appointment.status)) {
+        return NextResponse.json(
+          { message: "Service tracking is only for confirmed or completed appointments" },
+          { status: 400 }
+        );
+      }
+      if (trackingAction === "start_service") {
+        if (!appointment.serviceStartedAt) {
+          appointment.serviceStartedAt = new Date();
+        }
+      } else {
+        if (!appointment.serviceStartedAt) {
+          return NextResponse.json({ message: "Start service before recording end time" }, { status: 400 });
+        }
+        appointment.serviceEndedAt = new Date();
+      }
+      await saveAppointmentDoc(appointment);
+      const tracked = await Appointment.findById(id)
+        .populate("customer")
+        .populate("salon")
+        .populate("employee")
+        .populate("service");
+      return NextResponse.json(tracked);
     }
 
     const wasConfirmed = appointment.status === "confirmed";
@@ -153,6 +200,8 @@ export async function PUT(req, { params }) {
     recomputePayment(appointment);
 
     await saveAppointmentDoc(appointment);
+
+    sendPaidInvoiceEmailIfNeeded(String(id)).catch((err) => console.error("Billing invoice email:", err));
 
     const updated = await Appointment.findById(id)
       .populate("customer")

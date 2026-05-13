@@ -7,6 +7,15 @@ import cardStyles from "./AppointmentTab.module.css";
 
 const fetchOpts = { credentials: "include" };
 
+function formatServiceTrackTime(iso) {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" });
+  } catch {
+    return "—";
+  }
+}
+
 function paymentPlanLabel(plan) {
   switch (plan) {
     case "full":
@@ -551,6 +560,16 @@ export default function AppointmentTab() {
                   </strong>
                   <br />
                   Total: ₹{total} • Remaining: ₹{remaining}
+                  <div style={{ marginTop: 8, fontSize: 11, color: "#64748b", lineHeight: 1.5 }}>
+                    <div>
+                      <strong style={{ color: "#475569" }}>Service started:</strong>{" "}
+                      {formatServiceTrackTime(apt.serviceStartedAt)}
+                    </div>
+                    <div>
+                      <strong style={{ color: "#475569" }}>Service ended:</strong>{" "}
+                      {formatServiceTrackTime(apt.serviceEndedAt)}
+                    </div>
+                  </div>
                 </div>
                 <button
                   type="button"
@@ -700,6 +719,12 @@ export default function AppointmentTab() {
                         </p>
                         <p style={styles.table.textSmall}>
                           <strong>Time:</strong> {apt.time}
+                        </p>
+                        <p style={{ ...styles.table.textSmall, marginTop: 8, paddingTop: 6, borderTop: "1px solid #e2e8f0", color: "#334155" }}>
+                          <strong>Service started:</strong> {formatServiceTrackTime(apt.serviceStartedAt)}
+                        </p>
+                        <p style={{ ...styles.table.textSmall, color: "#334155" }}>
+                          <strong>Service ended:</strong> {formatServiceTrackTime(apt.serviceEndedAt)}
                         </p>
                         {apt.notes && (
                           <p
@@ -1023,6 +1048,38 @@ export default function AppointmentTab() {
                         <span className={cardStyles.detailValue}>
                           {new Date(apt.date).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" })} at {apt.time}
                         </span>
+                      </div>
+                      <div className={cardStyles.detailSection}>
+                        <div className={cardStyles.detailSectionTitle}>Employee · service time tracking</div>
+                        <div style={{ fontSize: 14, lineHeight: 1.8 }}>
+                          <div>
+                            <strong>Service started:</strong>{" "}
+                            {apt.serviceStartedAt
+                              ? new Date(apt.serviceStartedAt).toLocaleString("en-IN", {
+                                  dateStyle: "medium",
+                                  timeStyle: "short",
+                                })
+                              : "—"}
+                          </div>
+                          <div>
+                            <strong>Service ended:</strong>{" "}
+                            {apt.serviceEndedAt
+                              ? new Date(apt.serviceEndedAt).toLocaleString("en-IN", {
+                                  dateStyle: "medium",
+                                  timeStyle: "short",
+                                })
+                              : "—"}
+                          </div>
+                          {apt.billingEmailSentAt ? (
+                            <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
+                              Invoice emailed:{" "}
+                              {new Date(apt.billingEmailSentAt).toLocaleString("en-IN", {
+                                dateStyle: "medium",
+                                timeStyle: "short",
+                              })}
+                            </div>
+                          ) : null}
+                        </div>
                       </div>
                       <div className={cardStyles.detailRow}>
                         <span className={cardStyles.detailLabel}>Status</span>

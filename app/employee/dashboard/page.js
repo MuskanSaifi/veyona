@@ -73,11 +73,12 @@ export default function EmployeeDashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         toast.success("Status updated");
         fetchAppointments();
       } else {
-        toast.error("Failed to update status");
+        toast.error(data.message || "Failed to update status");
       }
     } catch (error) {
       toast.error("Error updating status");
@@ -124,6 +125,34 @@ export default function EmployeeDashboard() {
             },
           ];
     return (items || []).filter(Boolean);
+  };
+
+  const formatTrackTime = (iso) => {
+    if (!iso) return "—";
+    try {
+      return new Date(iso).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" });
+    } catch {
+      return "—";
+    }
+  };
+
+  const sendServiceTracking = async (aptId, trackingAction) => {
+    try {
+      const res = await fetch(`/api/appointment/${aptId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trackingAction }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.message || "Could not update");
+        return;
+      }
+      toast.success(trackingAction === "start_service" ? "Service started" : "Service ended");
+      fetchAppointments();
+    } catch {
+      toast.error("Network error");
+    }
   };
 
   return (
@@ -321,6 +350,34 @@ export default function EmployeeDashboard() {
                     >
                       Add Cash
                     </button>
+                    {(apt.status === "confirmed" || apt.status === "completed") && (
+                      <div style={{ marginTop: 10, textAlign: "left", maxWidth: 200 }}>
+                        <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.5 }}>
+                          <div>Started: {formatTrackTime(apt.serviceStartedAt)}</div>
+                          <div>Ended: {formatTrackTime(apt.serviceEndedAt)}</div>
+                        </div>
+                        {apt.status === "confirmed" && !apt.serviceStartedAt && (
+                          <button
+                            type="button"
+                            className={styles.statusSelect}
+                            style={{ marginTop: 6, width: "100%", backgroundColor: "#2563eb", color: "white" }}
+                            onClick={() => sendServiceTracking(apt._id, "start_service")}
+                          >
+                            Start service
+                          </button>
+                        )}
+                        {apt.status === "confirmed" && apt.serviceStartedAt && !apt.serviceEndedAt && (
+                          <button
+                            type="button"
+                            className={styles.statusSelect}
+                            style={{ marginTop: 6, width: "100%", backgroundColor: "#7c3aed", color: "white" }}
+                            onClick={() => sendServiceTracking(apt._id, "end_service")}
+                          >
+                            End service
+                          </button>
+                        )}
+                      </div>
+                    )}
                     </td>
                   </tr>
                 );
@@ -431,6 +488,35 @@ export default function EmployeeDashboard() {
                   >
                     Add Cash
                   </button>
+                  {(apt.status === "confirmed" || apt.status === "completed") && (
+                    <div style={{ marginTop: 10, width: "100%" }}>
+                      <div style={{ fontSize: 11, color: "#64748b", marginBottom: 6 }}>
+                        Started: {formatTrackTime(apt.serviceStartedAt)}
+                        <br />
+                        Ended: {formatTrackTime(apt.serviceEndedAt)}
+                      </div>
+                      {apt.status === "confirmed" && !apt.serviceStartedAt && (
+                        <button
+                          type="button"
+                          className={styles.addCashBtn}
+                          style={{ backgroundColor: "#2563eb", width: "100%" }}
+                          onClick={() => sendServiceTracking(apt._id, "start_service")}
+                        >
+                          Start service
+                        </button>
+                      )}
+                      {apt.status === "confirmed" && apt.serviceStartedAt && !apt.serviceEndedAt && (
+                        <button
+                          type="button"
+                          className={styles.addCashBtn}
+                          style={{ backgroundColor: "#7c3aed", width: "100%", marginTop: 6 }}
+                          onClick={() => sendServiceTracking(apt._id, "end_service")}
+                        >
+                          End service
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             );
