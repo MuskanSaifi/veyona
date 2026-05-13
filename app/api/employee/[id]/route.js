@@ -43,7 +43,10 @@ export async function PUT(req, { params }) {
     if (name) updateData.name = name;
     if (email) updateData.email = email;
     if (phone) updateData.phone = phone;
-    if (salon) updateData.salon = salon;
+    if (salon !== null && salon !== undefined) {
+      const trimmed = String(salon).trim();
+      updateData.salon = trimmed ? trimmed : null;
+    }
     if (experience) updateData.experience = parseInt(experience);
     if (active !== null) updateData.active = active === "true";
 

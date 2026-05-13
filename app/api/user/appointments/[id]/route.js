@@ -3,21 +3,9 @@ import connectDB from "@/lib/db";
 import Appointment from "@/models/Appointment";
 import { saveAppointmentDoc } from "@/lib/saveAppointmentDoc";
 import User from "@/models/User";
-import Customer from "@/models/Customer";
 import jwt from "jsonwebtoken";
 import { sendWhatsAppTemplate } from "@/lib/whatsapp";
-
-function phoneVariants(input) {
-  const raw = String(input || "").trim();
-  const digits = raw.replace(/\D/g, "");
-  const last10 = digits.length >= 10 ? digits.slice(-10) : digits;
-  const variants = new Set([raw, digits, last10]);
-  if (last10 && last10.length === 10) {
-    variants.add(`+91${last10}`);
-    variants.add(`91${last10}`);
-  }
-  return Array.from(variants).filter(Boolean);
-}
+import { getCustomerIdsForUser } from "@/lib/customerLookup";
 
 export async function PUT(req, { params }) {
   await connectDB();
@@ -38,12 +26,11 @@ export async function PUT(req, { params }) {
       return NextResponse.json({ message: "User not found" }, { status: 404 });
     }
 
-    const phones = phoneVariants(user.phone);
-    const customers = await Customer.find({ phone: { $in: phones } }).select("_id phone").lean();
-    if (!customers.length) {
+    const customerIdsRaw = await getCustomerIdsForUser(user);
+    if (!customerIdsRaw.length) {
       return NextResponse.json({ message: "Customer not found" }, { status: 404 });
     }
-    const customerIds = customers.map((c) => c._id.toString());
+    const customerIds = customerIdsRaw.map((c) => c.toString());
 
     const { id } = await params;
     const body = await req.json().catch(() => ({}));

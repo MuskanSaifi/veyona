@@ -7,6 +7,7 @@ import User from "@/models/User";
 import Coupon from "@/models/Coupon";
 import jwt from "jsonwebtoken";
 import { sendWhatsAppTemplate } from "@/lib/whatsapp";
+import { escapeRegex } from "@/lib/customerLookup";
 
 function getEffectiveExpiry(coupon) {
   if (!coupon) return null;
@@ -152,8 +153,22 @@ export async function POST(req) {
     // For now, do not allow mixing video consultation with other services
     const anyVideo = serviceDocs.some((s) => s.isVideoConsultation);
     if (anyVideo && serviceDocs.length > 1) {
+      const vcNames = serviceDocs
+        .filter((s) => s.isVideoConsultation)
+        .map((s) => s.name)
+        .filter(Boolean);
+      const otherNames = serviceDocs
+        .filter((s) => !s.isVideoConsultation)
+        .map((s) => s.name)
+        .filter(Boolean);
+      const suffix =
+        vcNames.length || otherNames.length
+          ? ` Video: ${vcNames.join(", ") || "—"}. Other: ${otherNames.join(", ") || "—"}.`
+          : "";
       return NextResponse.json(
-        { message: "Video consultation cannot be booked together with other services" },
+        {
+          message: `Video consultation cannot be booked together with other services.${suffix} Remove one group and book again.`,
+        },
         { status: 400 }
       );
     }
@@ -189,14 +204,19 @@ export async function POST(req) {
       }
     }
 
-    // Find or create customer
-    let customer = await Customer.findOne({ 
-      $or: [
-        { email: customerEmail },
-        { phone: customerPhone }
-      ]
-    });
-    
+    // Find or create customer: require phone + email together when email is present
+    // so another profile with the same phone does not inherit unrelated history.
+    const emailTrim = (customerEmail || "").trim() || (user?.email || "").trim();
+    let customer = null;
+    if (emailTrim) {
+      customer = await Customer.findOne({
+        phone: customerPhone,
+        email: new RegExp(`^${escapeRegex(emailTrim)}$`, "i"),
+      });
+    } else {
+      customer = await Customer.findOne({ phone: customerPhone });
+    }
+
     if (!customer) {
       customer = await Customer.create({
         name: customerName,
@@ -204,7 +224,6 @@ export async function POST(req) {
         phone: customerPhone,
       });
     } else {
-      // Update customer info if changed
       await Customer.findByIdAndUpdate(customer._id, {
         name: customerName,
         phone: customerPhone,

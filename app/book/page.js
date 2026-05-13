@@ -290,6 +290,12 @@ function BookPageContent() {
   /** In-person home/salon visit: full address required. Video & dental still show map for easy entry (optional). */
   const needsStructuredCustomerAddress =
     !service?.isVideoConsultation && !isDentalService;
+  const videoConsultNamesInCart = (servicesList || [])
+    .filter((s) => s.isVideoConsultation)
+    .map((s) => s.name)
+    .filter(Boolean);
+  const hasVideoConsultMixWithOthers =
+    videoConsultNamesInCart.length > 0 && (servicesList?.length || 0) > 1;
   const clinicAddress =
     service?.clinicAddress ||
     [service?.clinic?.address, service?.clinic?.city, service?.clinic?.state, service?.clinic?.pincode]
@@ -479,11 +485,6 @@ function BookPageContent() {
       toast.error("Please fill all required fields");
       return;
     }
-    if (employees.length > 0 && !formData.employee) {
-      toast.error("Please select a staff member");
-      return;
-    }
-
     // Home / salon visit: structured address required (video & dental: section visible but optional)
     if (needsStructuredCustomerAddress) {
       const { addressLine1, city, state, pincode } = formData;
@@ -503,6 +504,15 @@ function BookPageContent() {
     }
     if (isDentalService && !clinicAddress) {
       toast.error("Clinic address is not configured for this dental service");
+      return;
+    }
+
+    if (hasVideoConsultMixWithOthers) {
+      toast.error(
+        `Video consultation cannot be combined with other services. In your cart as video: ${videoConsultNamesInCart.join(
+          ", "
+        )}. Remove those or remove the other services.`
+      );
       return;
     }
 
@@ -675,12 +685,42 @@ function BookPageContent() {
             <h2 className={styles.serviceHeaderTitle}>
               {servicesList.length > 1 ? "Selected Services" : service.name}
             </h2>
-            {service.isVideoConsultation && (
-              <span style={{ padding: "4px 10px", background: "#dbeafe", color: "#1d4ed8", borderRadius: 6, fontSize: 12, fontWeight: 600 }}>
-                Video Consultation
+            {(servicesList.length > 1
+              ? (servicesList || []).some((s) => s.isVideoConsultation)
+              : !!service?.isVideoConsultation) && (
+              <span
+                style={{
+                  padding: "4px 10px",
+                  background: "#dbeafe",
+                  color: "#1d4ed8",
+                  borderRadius: 6,
+                  fontSize: 12,
+                  fontWeight: 600,
+                }}
+              >
+                Video consultation in cart
               </span>
             )}
           </div>
+          {hasVideoConsultMixWithOthers && (
+            <div
+              style={{
+                marginTop: 12,
+                marginBottom: 4,
+                padding: "12px 14px",
+                borderRadius: 10,
+                background: "#fffbeb",
+                border: "1px solid #fcd34d",
+                color: "#92400e",
+                fontSize: 14,
+                lineHeight: 1.5,
+              }}
+            >
+              <strong>These cannot be booked together.</strong> Video:{" "}
+              <strong>{videoConsultNamesInCart.join(", ")}</strong>. Remove the video service(s) or remove the
+              other services, then book separately.
+            </div>
+          )}
           {servicesList.length > 1 ? (
             <div className={styles.servicesList}>
               {servicesList.map((s) => (
@@ -696,6 +736,24 @@ function BookPageContent() {
                     />
                     <div className={styles.serviceText}>
                       <div className={styles.serviceName}>{s.name}</div>
+                      {s.isVideoConsultation && (
+                        <div style={{ marginTop: 6 }}>
+                          <span
+                            style={{
+                              display: "inline-block",
+                              padding: "3px 8px",
+                              background: "#dbeafe",
+                              color: "#1d4ed8",
+                              borderRadius: 6,
+                              fontSize: 11,
+                              fontWeight: 700,
+                              letterSpacing: 0.02,
+                            }}
+                          >
+                            Video consultation
+                          </span>
+                        </div>
+                      )}
                       {s.duration != null && s.duration > 0 && (
                         <div className={styles.serviceMeta}>{s.duration} min</div>
                       )}
@@ -764,6 +822,23 @@ function BookPageContent() {
                   className={styles.singleServiceImgLg}
                 />
                 <div style={{ minWidth: 0, flex: 1 }}>
+                  {service.isVideoConsultation && (
+                    <div style={{ marginBottom: 8 }}>
+                      <span
+                        style={{
+                          display: "inline-block",
+                          padding: "3px 8px",
+                          background: "#dbeafe",
+                          color: "#1d4ed8",
+                          borderRadius: 6,
+                          fontSize: 11,
+                          fontWeight: 700,
+                        }}
+                      >
+                        Video consultation
+                      </span>
+                    </div>
+                  )}
                   {service.duration != null && service.duration > 0 && (
                     <div className={styles.singleServiceMeta}>{service.duration} min</div>
                   )}
@@ -1143,24 +1218,9 @@ function BookPageContent() {
           </div>
 
           {employees.length > 0 && (
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ display: "block", marginBottom: 8, fontWeight: 500 }}>
-                Staff / professional *
-              </label>
-              <select
-                value={formData.employee}
-                onChange={(e) => setFormData({ ...formData, employee: e.target.value, time: "" })}
-                style={inputStyle}
-                required
-              >
-                {employees.map((emp) => (
-                  <option key={emp._id} value={emp._id}>
-                    {emp.name}
-                    {emp.salon?.name ? ` — ${emp.salon.name}` : ""}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 16, lineHeight: 1.5 }}>
+              A professional will be assigned automatically from available staff for your selected time.
+            </p>
           )}
 
           {formData.employee && formData.date && (
@@ -1369,7 +1429,7 @@ function BookPageContent() {
                 loading ||
                 !formData.date ||
                 !formData.time ||
-                (employees.length > 0 && !formData.employee)
+                hasVideoConsultMixWithOthers
               }
               style={{
                 flex: 1,

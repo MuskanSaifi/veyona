@@ -111,9 +111,9 @@ export async function POST(req) {
     const services = formData.get("services"); // comma-separated IDs (specializations)
     const experience = formData.get("experience");
 
-    if (!name || !email || !password || !phone || !salon) {
+    if (!name || !email || !password || !phone) {
       return NextResponse.json(
-        { message: "Name, email, password, phone, and salon are required" },
+        { message: "Name, email, password, and phone are required" },
         { status: 400 }
       );
     }
@@ -138,15 +138,20 @@ export async function POST(req) {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    const salonId = (salon || "").toString().trim();
+
     const employeeData = {
       name,
       email,
       password: hashedPassword,
       phone,
-      salon,
       image,
       public_id,
     };
+
+    if (salonId) {
+      employeeData.salon = salonId;
+    }
 
     if (experience) {
       employeeData.experience = parseInt(experience);

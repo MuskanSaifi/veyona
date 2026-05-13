@@ -205,10 +205,18 @@ export async function PUT(req, { params }) {
         .filter(Boolean)
         .join(", ");
       const clientLabel = servicesText ? `${clientName} – ${servicesText}` : clientName;
+      // Optional: Interakt template with dynamic URL on button index N — suffix only (e.g. "e" → https://domain/e).
+      const btnIdxRaw = process.env.INTERAKT_EMPLOYEE_ASSIGN_URL_BUTTON_INDEX;
+      const btnPath = (process.env.INTERAKT_EMPLOYEE_ASSIGN_URL_PATH || "e").replace(/^\//, "");
+      const templateExtra =
+        btnIdxRaw !== undefined && String(btnIdxRaw).trim() !== ""
+          ? { buttonValues: { [String(btnIdxRaw).trim()]: [btnPath] } }
+          : {};
       sendWhatsAppTemplate(
         updated.employee.phone,
         employeeTemplate,
-        [clientLabel, dateStr, timeStr]
+        [clientLabel, dateStr, timeStr],
+        templateExtra
       ).catch((err) => console.error("WhatsApp employee assign failed:", err));
     }
 

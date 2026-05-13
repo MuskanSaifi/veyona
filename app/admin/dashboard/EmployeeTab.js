@@ -122,18 +122,28 @@ export default function EmployeeTab() {
       return;
     }
 
+    const salonId = (formData.salon || "").toString().trim();
+
+    if (!editing) {
+      const pw = (formData.password || "").trim();
+      if (pw.length < 6) {
+        toast.error("Password is required for new employees (at least 6 characters).");
+        return;
+      }
+    }
+
     const data = new FormData();
     data.append("name", formData.name);
     data.append("email", formData.email);
-    if (formData.password) {
-      data.append("password", formData.password);
+    if (editing) {
+      if (formData.password?.trim()) {
+        data.append("password", formData.password.trim());
+      }
+    } else {
+      data.append("password", formData.password.trim());
     }
     data.append("phone", formData.phone);
-    if (formData.salon) {
-      data.append("salon", formData.salon);
-    } else if (salons[0]?._id) {
-      data.append("salon", salons[0]._id);
-    }
+    data.append("salon", salonId);
     data.append("categories", formData.categories.join(","));
     data.append("services", formData.services.join(","));
     if (formData.experience) {
@@ -144,19 +154,17 @@ export default function EmployeeTab() {
     }
 
     try {
-      if (editing) {
-        await fetch(`/api/employee/${editing._id}`, {
-          method: "PUT",
-          body: data,
-        });
-        toast.success("Employee updated");
-      } else {
-        await fetch("/api/employee", {
-          method: "POST",
-          body: data,
-        });
-        toast.success("Employee added");
+      const url = editing ? `/api/employee/${editing._id}` : "/api/employee";
+      const res = await fetch(url, {
+        method: editing ? "PUT" : "POST",
+        body: data,
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(payload.message || (editing ? "Could not update employee" : "Could not add employee"));
+        return;
       }
+      toast.success(editing ? "Employee updated" : "Employee added");
       fetchEmployees();
       setShowModal(false);
       setEditing(null);
@@ -165,7 +173,7 @@ export default function EmployeeTab() {
         email: "",
         password: "",
         phone: "",
-        salon: salons[0]?._id || "",
+        salon: "",
         categories: [],
         services: [],
         experience: "",
@@ -184,7 +192,7 @@ export default function EmployeeTab() {
       email: employee.email,
       password: "",
       phone: employee.phone,
-      salon: employee.salon?._id || employee.salon || salons[0]?._id || "",
+      salon: employee.salon?._id || employee.salon || "",
       categories: catIds,
       services: employee.services?.map((s) => s._id || s) || [],
       experience: employee.experience?.toString() || "",
@@ -196,18 +204,28 @@ export default function EmployeeTab() {
 
   const handleDelete = async (id) => {
     if (!confirm("Delete this employee?")) return;
-    await fetch(`/api/employee/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/employee/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      toast.error(d.message || "Could not delete employee");
+      return;
+    }
     toast.success("Employee deleted");
     fetchEmployees();
   };
 
   const toggleActive = async (id, active) => {
     const data = new FormData();
-    data.append("active", !active);
-    await fetch(`/api/employee/${id}`, {
+    data.append("active", String(!active));
+    const res = await fetch(`/api/employee/${id}`, {
       method: "PUT",
       body: data,
     });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      toast.error(d.message || "Could not update status");
+      return;
+    }
     fetchEmployees();
   };
 
@@ -226,7 +244,7 @@ export default function EmployeeTab() {
               email: "",
               password: "",
               phone: "",
-              salon: salons[0]?._id || "",
+              salon: "",
               categories: [],
               services: [],
               experience: "",
@@ -286,7 +304,7 @@ export default function EmployeeTab() {
           {filteredEmployees.map((employee) => {
             const statusBg = employee.active ? "#dcfce7" : "#fee2e2";
             const statusColor = employee.active ? "#166534" : "#991b1b";
-            const salonName = employee.salon?.name || "N/A";
+            const salonName = employee.salon?.name || "Not assigned";
             const spec = employee.services?.length > 0
               ? `${employee.services.length} service${employee.services.length > 1 ? "s" : ""}`
               : "N/A";
@@ -376,7 +394,7 @@ export default function EmployeeTab() {
                     <p style={styles.table.text}>{employee.phone}</p>
                   </td>
                   <td style={styles.table.td}>
-                    <p style={styles.table.textSmall}>{employee.salon?.name || "N/A"}</p>
+                    <p style={styles.table.textSmall}>{employee.salon?.name || "Not assigned"}</p>
                   </td>
                   <td style={styles.table.td}>
                     {employee.services?.length > 0 ? (
@@ -463,7 +481,7 @@ export default function EmployeeTab() {
               <div className={mobile.detailSection}>
                 <div className={mobile.detailSectionTitle}>Work</div>
                 <div style={{ fontSize: 14, lineHeight: 1.7 }}>
-                  <div>Salon: {viewMore.salon?.name || "N/A"}</div>
+                  <div>Salon: {viewMore.salon?.name || "Not assigned"}</div>
                   <div>Experience: {viewMore.experience ? `${viewMore.experience} years` : "—"}</div>
                   <div>
                     Specialization: {viewMore.services?.length > 0
@@ -548,7 +566,29 @@ export default function EmployeeTab() {
                 style={styles.inputStyle}
                 required
               />
-              {/* Salon/Clinic is now assigned automatically for home services, so we hide the field */}
+              {salons.length > 0 ? (
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ display: "block", marginBottom: 6, fontWeight: 600, fontSize: 14 }}>
+                    Salon / clinic <span style={{ fontWeight: 500, color: "#6b7280" }}>(optional)</span>
+                  </label>
+                  <select
+                    value={formData.salon || ""}
+                    onChange={(e) => setFormData({ ...formData, salon: e.target.value })}
+                    style={{ ...styles.inputStyle, width: "100%" }}
+                  >
+                    <option value="">Not assigned — add or link a salon later</option>
+                    {salons.map((s) => (
+                      <option key={s._id} value={s._id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 12 }}>
+                  No salons yet — you can still save this employee. Assign a salon here whenever you add one in Salons.
+                </p>
+              )}
               <div>
                 <label style={{ display: "block", marginBottom: 10, fontWeight: 500 }}>Categories (Select multiple):</label>
                 <div style={{ maxHeight: 200, overflowY: "auto", border: "1px solid #ddd", borderRadius: 6, padding: 10 }}>

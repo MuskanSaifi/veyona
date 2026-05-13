@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import Appointment from "@/models/Appointment";
 import User from "@/models/User";
-import Customer from "@/models/Customer";
 import jwt from "jsonwebtoken";
+import { getCustomerIdsForUser } from "@/lib/customerLookup";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import fs from "fs/promises";
 import path from "path";
@@ -81,8 +81,8 @@ export async function GET(req, { params }) {
       return NextResponse.json({ message: "User not found" }, { status: 404 });
     }
 
-    const customer = await Customer.findOne({ phone: user.phone }).lean();
-    if (!customer) {
+    const customerIds = await getCustomerIdsForUser(user);
+    if (!customerIds.length) {
       return NextResponse.json({ message: "Customer not found" }, { status: 404 });
     }
 
@@ -96,7 +96,8 @@ export async function GET(req, { params }) {
     if (!apt) {
       return NextResponse.json({ message: "Appointment not found" }, { status: 404 });
     }
-    if (String(apt.customer?._id || apt.customer) !== String(customer._id)) {
+    const aptCustomerId = String(apt.customer?._id || apt.customer || "");
+    if (!customerIds.some((cid) => String(cid) === aptCustomerId)) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 });
     }
 

@@ -432,7 +432,6 @@ export default function UserDashboard() {
                                 </div>
                               )}
                             </div>
-                            <div style={{ fontSize: 12, color: "#6b7280" }}>{apt.salon?.name || "N/A"}</div>
                           </div>
                         </td>
                         <td className={styles.td}>
@@ -603,7 +602,6 @@ export default function UserDashboard() {
                           </span>
                         </div>
                       </div>
-                      <p className={styles.salonName} style={{ marginTop: 10 }}>{apt.salon?.name || "N/A"}</p>
                       <div className={styles.location}>
                         <FaMapMarkerAlt className={styles.locationIcon} />
                         <span>

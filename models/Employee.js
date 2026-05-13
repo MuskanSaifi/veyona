@@ -9,7 +9,7 @@ const employeeSchema = new mongoose.Schema(
     salon: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Salon",
-      required: true,
+      required: false,
     },
     categories: [
       {
@@ -36,6 +36,13 @@ employeeSchema.index({ salon: 1, active: 1 });
 employeeSchema.index({ salon: 1 });
 employeeSchema.index({ active: 1 });
 
-export default mongoose.models.Employee ||
-  mongoose.model("Employee", employeeSchema);
+const MODEL_NAME = "Employee";
+
+// Next.js hot-reloads modules but Mongoose keeps the first compiled schema.
+// Delete cache so optional `salon` (and other schema edits) apply without a full server restart.
+if (mongoose.models[MODEL_NAME]) {
+  delete mongoose.models[MODEL_NAME];
+}
+
+export default mongoose.model(MODEL_NAME, employeeSchema);
 
