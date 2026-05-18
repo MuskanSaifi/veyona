@@ -758,9 +758,10 @@ export default function AppointmentTab() {
                     <td style={styles.table.td}>
                       {(() => {
                         const subtotal = apt.pricing?.subtotal ?? apt.totalPrice ?? apt.service?.price ?? 0;
+                        const serviceCharge = apt.pricing?.serviceCharge ?? 0;
                         const discount = apt.pricing?.discountAmount ?? 0;
                         const couponCode = apt.pricing?.couponCode;
-                        const total = apt.pricing?.totalPayable ?? subtotal - discount;
+                        const total = apt.pricing?.totalPayable ?? subtotal + serviceCharge - discount;
                         const paidOnline = apt.payment?.paidOnline ?? 0;
                         const paidCash = apt.payment?.paidCash ?? 0;
                         const paid = paidOnline + paidCash;
@@ -781,6 +782,9 @@ export default function AppointmentTab() {
                         return (
                           <div style={{ fontSize: 12, lineHeight: 1.6, textAlign: "left" }}>
                             <div><strong>Booking amount:</strong> ₹{subtotal}</div>
+                            {serviceCharge > 0 && (
+                              <div style={{ marginTop: 2 }}><strong>Service charge:</strong> ₹{serviceCharge}</div>
+                            )}
                             {couponCode && discount > 0 && (
                               <div style={{ color: "#059669", fontWeight: 600, marginTop: 2 }}>
                                 Coupon {couponCode}: -₹{discount}
@@ -980,8 +984,9 @@ export default function AppointmentTab() {
                     : (apt.service ? [apt.service] : []);
                   const serviceNames = multiServices.map((s) => s?.name).filter(Boolean);
                   const subtotal = apt.pricing?.subtotal ?? apt.totalPrice ?? apt.service?.price ?? 0;
+                  const serviceCharge = apt.pricing?.serviceCharge ?? 0;
                   const discount = apt.pricing?.discountAmount ?? 0;
-                  const total = apt.pricing?.totalPayable ?? subtotal - discount;
+                  const total = apt.pricing?.totalPayable ?? subtotal + serviceCharge - discount;
                   const paidOnline = apt.payment?.paidOnline ?? 0;
                   const paidCash = apt.payment?.paidCash ?? 0;
                   const paid = paidOnline + paidCash;
@@ -1101,6 +1106,7 @@ export default function AppointmentTab() {
                         <div className={cardStyles.detailSectionTitle}>Payment</div>
                         <div style={{ fontSize: 14, lineHeight: 1.8 }}>
                           <div>Booking amount: ₹{subtotal}</div>
+                          {serviceCharge > 0 && <div>Service charge: ₹{serviceCharge}</div>}
                           {apt.pricing?.couponCode && discount > 0 && (
                             <div style={{ color: "#059669", fontWeight: 600 }}>Coupon {apt.pricing.couponCode}: -₹{discount}</div>
                           )}

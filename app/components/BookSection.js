@@ -8,6 +8,7 @@ import {
   addBookingService,
   removeBookingService,
 } from "@/lib/bookingCartSlice";
+import { computeOrderTotals } from "@/lib/cartPricing";
 
 // Placeholder when service has no image
 const DEFAULT_SERVICE_IMAGE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Crect fill='%23e5e7eb' width='80' height='80'/%3E%3Ctext fill='%239ca3af' font-family='sans-serif' font-size='10' x='50%25' y='50%25' text-anchor='middle' dy='.3em'%3ENo Image%3C/text%3E%3C/svg%3E";
@@ -663,10 +664,24 @@ export default function BookSection() {
                     </div>
                   </div>
                   <div style={{ fontWeight: 800, color: "#111827" }}>
-                    Total{" "}
-                    <span style={{ color: "var(--accent-terracotta)" }}>
-                      ₹{cartServices.reduce((sum, x) => sum + (Number(x.price) || 0) * getQtyForCart(x._id), 0)}
-                    </span>
+                    {(() => {
+                      const cartSubtotal = cartServices.reduce(
+                        (sum, x) => sum + (Number(x.price) || 0) * getQtyForCart(x._id),
+                        0
+                      );
+                      const { serviceCharge, totalPayable } = computeOrderTotals({ subtotal: cartSubtotal });
+                      return (
+                        <>
+                          Total{" "}
+                          <span style={{ color: "var(--accent-terracotta)" }}>₹{totalPayable}</span>
+                          {serviceCharge > 0 && (
+                            <div style={{ fontSize: 11, fontWeight: 500, color: "#6b7280", marginTop: 2 }}>
+                              incl. ₹{serviceCharge} service charge
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
 

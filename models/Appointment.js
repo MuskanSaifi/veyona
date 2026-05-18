@@ -44,6 +44,7 @@ const appointmentSchema = new mongoose.Schema(
     totalPrice: { type: Number }, // combined price of all services
     pricing: {
       subtotal: { type: Number }, // before discounts
+      serviceCharge: { type: Number, default: 0 },
       discountAmount: { type: Number, default: 0 },
       couponCode: { type: String, trim: true, uppercase: true },
       totalPayable: { type: Number }, // after discounts

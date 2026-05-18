@@ -6,6 +6,11 @@ import toast from "react-hot-toast";
 import { setBookingServices } from "@/lib/bookingCartSlice";
 import { store } from "@/lib/store";
 import LocationPickerModal from "@/app/components/LocationPickerModal";
+import {
+  CART_FREE_SERVICE_THRESHOLD,
+  CART_SERVICE_CHARGE_AMOUNT,
+  computeOrderTotals,
+} from "@/lib/cartPricing";
 import styles from "./book.module.css";
 
 const BOOK_SERVICE_PLACEHOLDER_IMG =
@@ -285,7 +290,10 @@ function BookPageContent() {
   );
   const subtotal = baseSubtotal;
   const discountAmount = Number(couponApplied?.discountAmount || 0);
-  const totalPayable = Math.max(0, subtotal - discountAmount);
+  const { serviceCharge, totalPayable } = computeOrderTotals({
+    subtotal,
+    discountAmount,
+  });
   const isDentalService = service?.category?.type === "dentist";
   /** In-person home/salon visit: full address required. Video & dental still show map for easy entry (optional). */
   const needsStructuredCustomerAddress =
@@ -721,7 +729,7 @@ function BookPageContent() {
               other services, then book separately.
             </div>
           )}
-          {servicesList.length > 1 ? (
+          {servicesList.length > 0 ? (
             <div className={styles.servicesList}>
               {servicesList.map((s) => (
                 <div
@@ -813,50 +821,9 @@ function BookPageContent() {
                 </div>
               ))}
             </div>
-          ) : (
-            <>
-              <div className={styles.singleServiceRow}>
-                <img
-                  src={service.image || BOOK_SERVICE_PLACEHOLDER_IMG}
-                  alt=""
-                  className={styles.singleServiceImgLg}
-                />
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  {service.isVideoConsultation && (
-                    <div style={{ marginBottom: 8 }}>
-                      <span
-                        style={{
-                          display: "inline-block",
-                          padding: "3px 8px",
-                          background: "#dbeafe",
-                          color: "#1d4ed8",
-                          borderRadius: 6,
-                          fontSize: 11,
-                          fontWeight: 700,
-                        }}
-                      >
-                        Video consultation
-                      </span>
-                    </div>
-                  )}
-                  {service.duration != null && service.duration > 0 && (
-                    <div className={styles.singleServiceMeta}>{service.duration} min</div>
-                  )}
-                </div>
-              </div>
-              {service.description && (
-                <p style={{ color: "#6b7280", marginBottom: 15 }}>{service.description}</p>
-              )}
-              <div style={{ marginBottom: 12 }}>
-                <button
-                  type="button"
-                  onClick={() => removeServiceFromCart(service)}
-                  className={styles.removeBtn}
-                >
-                  Remove from cart
-                </button>
-              </div>
-            </>
+          ) : null}
+          {servicesList.length === 1 && service?.description && (
+            <p style={{ color: "#6b7280", marginBottom: 15, marginTop: 4 }}>{service.description}</p>
           )}
           <div style={{ display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
             <span style={{ fontSize: 20, fontWeight: "bold", color: "var(--accent-terracotta)" }}>
@@ -1297,6 +1264,17 @@ function BookPageContent() {
               <span style={{ color: "#4b5563", fontWeight: 500, fontSize: 15 }}>Subtotal</span>
               <span style={{ color: "#111827", fontWeight: 600, fontSize: 15 }}>₹{subtotal}</span>
             </div>
+            {serviceCharge > 0 && (
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
+                <span style={{ color: "#4b5563", fontSize: 14 }}>Service charge</span>
+                <span style={{ color: "#111827", fontWeight: 600, fontSize: 14 }}>₹{serviceCharge}</span>
+              </div>
+            )}
+            {subtotal > 0 && subtotal < CART_FREE_SERVICE_THRESHOLD && (
+              <p style={{ margin: "0 0 10px", fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
+                Orders below ₹{CART_FREE_SERVICE_THRESHOLD} include a ₹{CART_SERVICE_CHARGE_AMOUNT} service charge.
+              </p>
+            )}
             {discountAmount > 0 && (
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
                 <span style={{ color: "#4b5563", fontSize: 14 }}>

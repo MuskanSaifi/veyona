@@ -8,6 +8,7 @@ import Coupon from "@/models/Coupon";
 import jwt from "jsonwebtoken";
 import { sendWhatsAppTemplate } from "@/lib/whatsapp";
 import { escapeRegex } from "@/lib/customerLookup";
+import { computeOrderTotals } from "@/lib/cartPricing";
 
 function getEffectiveExpiry(coupon) {
   if (!coupon) return null;
@@ -311,7 +312,8 @@ export async function POST(req) {
       }
       discountAmount = computed.discountAmount;
     }
-    const totalPayable = Math.max(0, subtotal - discountAmount);
+    const orderTotals = computeOrderTotals({ subtotal, discountAmount });
+    const { serviceCharge, totalPayable } = orderTotals;
 
     const plan =
       paymentPlan === "book_now_pay_later"
@@ -347,6 +349,7 @@ export async function POST(req) {
       totalPrice: totalPrice || undefined,
       pricing: {
         subtotal: subtotal || undefined,
+        serviceCharge: serviceCharge || 0,
         discountAmount: discountAmount || 0,
         couponCode: appliedCouponCode || undefined,
         totalPayable: totalPayable || undefined,
