@@ -5,6 +5,7 @@ import User from "@/models/User";
 import jwt from "jsonwebtoken";
 import { getCustomerIdsForUser } from "@/lib/customerLookup";
 import { buildInvoicePdfBuffer } from "@/lib/buildInvoicePdf";
+import { ensureAppointmentInvoiceNumber } from "@/lib/invoiceNumber";
 
 export const runtime = "nodejs";
 
@@ -52,8 +53,23 @@ export async function GET(req, { params }) {
       email: apt.customer?.email || user.email || "",
     };
 
-    const pdfBuffer = await buildInvoicePdfBuffer(apt, billTo);
-    const invoiceNo = `VEY-${String(apt._id).slice(-8).toUpperCase()}`;
+    const successfulPayments = Array.isArray(apt.payments)
+      ? apt.payments
+          .filter((p) => p && (p.status === "captured" || p.status === "recorded") && p.createdAt)
+          .map((p) => new Date(p.createdAt))
+          .filter((d) => !Number.isNaN(d.getTime()))
+      : [];
+    const invoiceIssueDate =
+      successfulPayments.length > 0
+        ? successfulPayments.sort((a, b) => a.getTime() - b.getTime())[0]
+        : apt.updatedAt
+          ? new Date(apt.updatedAt)
+          : apt.createdAt
+            ? new Date(apt.createdAt)
+            : new Date();
+
+    const invoiceNo = await ensureAppointmentInvoiceNumber(id, invoiceIssueDate);
+    const pdfBuffer = await buildInvoicePdfBuffer({ ...apt, invoiceNumber: invoiceNo }, billTo);
 
     return new NextResponse(pdfBuffer, {
       headers: {

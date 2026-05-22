@@ -106,6 +106,8 @@ const appointmentSchema = new mongoose.Schema(
     serviceEndedAt: { type: Date },
     /** Set when paid-in-full invoice was emailed (idempotency) */
     billingEmailSentAt: { type: Date },
+    /** VEY/2026-27/00001 — assigned on first invoice PDF / email */
+    invoiceNumber: { type: String, trim: true },
   },
   { timestamps: true }
 );
