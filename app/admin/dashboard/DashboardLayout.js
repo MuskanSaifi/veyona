@@ -31,6 +31,7 @@ import UsersTab from "./UsersTab";
 import ReelTab from "./ReelTab";
 import SiteSettingsTab from "./SiteSettingsTab";
 import WalletTab from "./WalletTab";
+import CustomerFeedbackTab from "./CustomerFeedbackTab";
 import {
   FiHome,
   FiLogOut,
@@ -48,6 +49,7 @@ import {
   FiTag,
   FiShield,
   FiCreditCard,
+  FiThumbsUp,
 } from "react-icons/fi";
 
 import {
@@ -176,6 +178,14 @@ export default function DashboardLayout() {
   >
     <MdEventAvailable className={styles.icon} />
     Appointments
+  </button>
+
+  <button
+    className={`${styles.menuItem} ${activeTab === "customer-feedback" ? styles.active : ""}`}
+    onClick={() => setActiveTab("customer-feedback")}
+  >
+    <FiThumbsUp className={styles.icon} />
+    Customer Feedback
   </button>
 
   <button
@@ -356,6 +366,7 @@ export default function DashboardLayout() {
         {activeTab === "wallets" && <WalletTab />}
         {activeTab === "users" && <UsersTab />}
         {activeTab === "appointments" && <AppointmentTab />}
+        {activeTab === "customer-feedback" && <CustomerFeedbackTab />}
         {activeTab === "coupons" && <CouponTab />}
         {activeTab === "blogs" && <BlogTab />}
         {activeTab === "reels" && <ReelTab />}
