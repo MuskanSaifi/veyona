@@ -29,6 +29,8 @@ import CouponTab from "./CouponTab";
 import TrustSignalsTab from "./TrustSignalsTab";
 import UsersTab from "./UsersTab";
 import ReelTab from "./ReelTab";
+import SiteSettingsTab from "./SiteSettingsTab";
+import WalletTab from "./WalletTab";
 import {
   FiHome,
   FiLogOut,
@@ -45,6 +47,7 @@ import {
   FiMenu,
   FiTag,
   FiShield,
+  FiCreditCard,
 } from "react-icons/fi";
 
 import {
@@ -149,6 +152,14 @@ export default function DashboardLayout() {
   >
     <FiUsers className={styles.icon} />
     Employees
+  </button>
+
+  <button
+    className={`${styles.menuItem} ${activeTab === "wallets" ? styles.active : ""}`}
+    onClick={() => setActiveTab("wallets")}
+  >
+    <FiCreditCard className={styles.icon} />
+    Employee Wallets
   </button>
 
   <button
@@ -280,6 +291,14 @@ export default function DashboardLayout() {
   </button>
 
   <button
+    className={`${styles.menuItem} ${activeTab === "site-settings" ? styles.active : ""}`}
+    onClick={() => setActiveTab("site-settings")}
+  >
+    <FiStar className={styles.icon} />
+    Happy Customers
+  </button>
+
+  <button
     className={`${styles.menuItem} ${activeTab === "trust-signals" ? styles.active : ""}`}
     onClick={() => setActiveTab("trust-signals")}
   >
@@ -334,6 +353,7 @@ export default function DashboardLayout() {
         {activeTab === "products" && <ProductTab />}
         {activeTab === "salons" && <SalonTab />}
         {activeTab === "employees" && <EmployeeTab />}
+        {activeTab === "wallets" && <WalletTab />}
         {activeTab === "users" && <UsersTab />}
         {activeTab === "appointments" && <AppointmentTab />}
         {activeTab === "coupons" && <CouponTab />}
@@ -350,6 +370,7 @@ export default function DashboardLayout() {
         {activeTab === "terms" && <TermsTab />}
         {activeTab === "footer" && <FooterTab />}
         {activeTab === "theme" && <ThemeTab />}
+        {activeTab === "site-settings" && <SiteSettingsTab />}
         {activeTab === "trust-signals" && <TrustSignalsTab />}
         {activeTab === "faq" && <FaqTab />}
         {activeTab === "app-download" && <AppDownloadTab />}

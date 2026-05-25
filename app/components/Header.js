@@ -21,6 +21,7 @@ import {
 } from "react-icons/fa";
 import { useRouter } from "next/navigation";
 import styles from "./header.module.css";
+import HappyCustomersBar from "./HappyCustomersBar";
 
 // Default placeholder image
 const DEFAULT_SERVICE_IMAGE = "/DEFAULT_SERVICE_IMAGE.webp";
@@ -50,7 +51,27 @@ export default function Header() {
   const searchRef = useRef(null);
   const searchResultsRef = useRef(null);
   const profileSidebarRef = useRef(null);
+  const headerRootRef = useRef(null);
   const bookingServiceIds = useSelector((state) => state.bookingCart.serviceIds) || [];
+
+  // Keep `body { padding-top }` synced with the real header height so the
+  // HappyCustomersBar (rendered above .container) never overlaps page content.
+  useEffect(() => {
+    if (typeof window === "undefined" || !headerRootRef.current) return;
+    const el = headerRootRef.current;
+    const applyPadding = () => {
+      const h = el.offsetHeight;
+      if (h > 0) document.body.style.paddingTop = `${h}px`;
+    };
+    applyPadding();
+    const ro = new ResizeObserver(applyPadding);
+    ro.observe(el);
+    window.addEventListener("resize", applyPadding);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", applyPadding);
+    };
+  }, []);
 
   useEffect(() => {
     fetchUser();
@@ -467,7 +488,8 @@ export default function Header() {
   const productsHierarchy = organizeProductsHierarchy();
 
   return (
-    <header className={styles.header}>
+    <header className={styles.header} ref={headerRootRef}>
+      <HappyCustomersBar />
       <div className={styles.container}>
         {/* LOGO */}
         <Link href="/" className={styles.logo}>

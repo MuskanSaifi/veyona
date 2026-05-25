@@ -162,9 +162,37 @@ export default function EmployeeDashboard() {
           <h1 className={styles.title}>Employee Dashboard</h1>
           <p className={styles.subtitle}>Manage your appointments and leads</p>
         </div>
-        <button className={styles.logoutBtn} onClick={logout}>
-          Logout
-        </button>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <a
+            href="/employee/service-tracking"
+            style={{
+              padding: "10px 18px",
+              background: "#2563eb",
+              color: "white",
+              borderRadius: 8,
+              fontWeight: 600,
+              textDecoration: "none",
+            }}
+          >
+            Service Tracking
+          </a>
+          <a
+            href="/employee/wallet"
+            style={{
+              padding: "10px 18px",
+              background: "#0f766e",
+              color: "white",
+              borderRadius: 8,
+              fontWeight: 600,
+              textDecoration: "none",
+            }}
+          >
+            My Wallet
+          </a>
+          <button className={styles.logoutBtn} onClick={logout}>
+            Logout
+          </button>
+        </div>
       </div>
 
       <div className={styles.filters}>
