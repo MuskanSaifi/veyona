@@ -1,25 +1,160 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import Appointment from "@/models/Appointment";
-import Salon from "@/models/Salon";
 import Employee from "@/models/Employee";
 import Service from "@/models/Service";
+
+const OPENING_TIME = "09:00";
+const CLOSING_TIME = "20:00";
+const BASE_INTERVAL = 30;
+
+function getIstDayBounds(dateStr) {
+  const start = new Date(`${dateStr}T00:00:00+05:30`);
+  const end = new Date(`${dateStr}T23:59:59.999+05:30`);
+  return { start, end };
+}
+
+function getAppointmentDurationMinutes(apt) {
+  let aptDuration = apt.totalDuration;
+  if (!aptDuration && Array.isArray(apt.services) && apt.services.length > 0) {
+    aptDuration = apt.services.reduce((sum, s) => sum + (s.duration || 30), 0);
+  }
+  if (!aptDuration) {
+    aptDuration = apt.service?.duration || 30;
+  }
+  return aptDuration;
+}
+
+async function resolveRequiredDuration({
+  serviceId,
+  serviceIdsParam,
+  quantitiesById,
+  safeQuantity,
+}) {
+  const baseInterval = BASE_INTERVAL;
+  let requiredDuration = baseInterval;
+
+  if (!serviceIdsParam && !serviceId) {
+    return requiredDuration;
+  }
+
+  const ids = (serviceIdsParam
+    ? serviceIdsParam.split(",").filter(Boolean)
+    : [serviceId]
+  ).map((id) => id.toString());
+
+  const services = await Service.find({ _id: { $in: ids } }).select("duration").lean();
+  if (services.length === 0) {
+    return requiredDuration;
+  }
+
+  if (Object.keys(quantitiesById).length > 0) {
+    requiredDuration = services.reduce((sum, s) => {
+      const q = quantitiesById[s._id?.toString?.()] || safeQuantity;
+      const mins = s.duration > 0 ? s.duration : baseInterval;
+      return sum + mins * q;
+    }, 0);
+  } else {
+    requiredDuration = services.reduce((sum, s) => {
+      const mins = s.duration > 0 ? s.duration : baseInterval;
+      return sum + mins;
+    }, 0);
+    requiredDuration = requiredDuration * safeQuantity;
+  }
+
+  return Math.max(baseInterval, requiredDuration);
+}
+
+function generateSlotsForEmployee({
+  date,
+  employeeId,
+  existingAppointments,
+  requiredDuration,
+  openMinutes,
+  closeMinutes,
+  nowMs,
+}) {
+  const slots = [];
+
+  for (let minutes = openMinutes; minutes + requiredDuration <= closeMinutes; minutes += BASE_INTERVAL) {
+    const hour = Math.floor(minutes / 60);
+    const min = minutes % 60;
+    const timeString = `${hour.toString().padStart(2, "0")}:${min.toString().padStart(2, "0")}`;
+    const slotEndMinutes = minutes + requiredDuration;
+    const slotIstMs = Date.parse(`${date}T${timeString}:00+05:30`);
+
+    if (slotIstMs < nowMs) continue;
+
+    const isBooked = existingAppointments.some((apt) => {
+      if (!apt.time) return false;
+      const [aptHour, aptMin] = apt.time.split(":").map(Number);
+      const aptStartMinutes = aptHour * 60 + aptMin;
+      const aptEndMinutes = aptStartMinutes + getAppointmentDurationMinutes(apt);
+      return minutes < aptEndMinutes && slotEndMinutes > aptStartMinutes;
+    });
+
+    slots.push({
+      time: timeString,
+      available: !isBooked,
+      employeeId: String(employeeId),
+    });
+  }
+
+  return slots;
+}
+
+function mergeSlotsAcrossEmployees(perEmployeeSlots) {
+  const byTime = new Map();
+
+  for (const list of perEmployeeSlots) {
+    for (const slot of list) {
+      const existing = byTime.get(slot.time);
+      if (!existing) {
+        byTime.set(slot.time, {
+          time: slot.time,
+          available: slot.available,
+          employeeIds: slot.available ? [slot.employeeId] : [],
+        });
+        continue;
+      }
+      if (slot.available) {
+        existing.available = true;
+        if (!existing.employeeIds.includes(slot.employeeId)) {
+          existing.employeeIds.push(slot.employeeId);
+        }
+      }
+    }
+  }
+
+  return Array.from(byTime.values()).sort((a, b) => a.time.localeCompare(b.time));
+}
 
 export async function GET(req) {
   await connectDB();
   const { searchParams } = new URL(req.url);
   const employeeId = searchParams.get("employeeId");
+  const employeeIdsParam = searchParams.get("employeeIds");
   const date = searchParams.get("date");
   const serviceId = searchParams.get("serviceId");
-  const serviceIdsParam = searchParams.get("serviceIds"); // comma-separated for multi-service
+  const serviceIdsParam = searchParams.get("serviceIds");
   const quantityParam = searchParams.get("quantity");
-  const serviceQuantitiesParam = searchParams.get("serviceQuantities"); // comma-separated: <serviceId>:<qty>
+  const serviceQuantitiesParam = searchParams.get("serviceQuantities");
 
-  if (!employeeId || !date) {
+  const employeeIds = employeeIdsParam
+    ? employeeIdsParam.split(",").map((x) => x.trim()).filter(Boolean)
+    : employeeId
+    ? [employeeId]
+    : [];
+
+  if (!employeeIds.length || !date) {
     return NextResponse.json(
-      { message: "Employee ID and date are required" },
+      { message: "Employee ID(s) and date are required" },
       { status: 400 }
     );
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return NextResponse.json({ message: "Invalid date format" }, { status: 400 });
   }
 
   try {
@@ -38,139 +173,82 @@ export async function GET(req) {
       }
     }
 
-    // Get employee to find salon
-    const employee = await Employee.findById(employeeId).populate("salon");
-    
-    if (!employee || !employee.salon) {
-      return NextResponse.json({ message: "Employee or salon not found" }, { status: 404 });
+    const employees = await Employee.find({ _id: { $in: employeeIds } }).select("_id salon active");
+    const activeIds = employees.filter((e) => e.active !== false).map((e) => String(e._id));
+
+    if (activeIds.length === 0) {
+      return NextResponse.json({ message: "No active employees found" }, { status: 404 });
     }
 
-    const salon = typeof employee.salon === 'object' ? employee.salon : await Salon.findById(employee.salon);
-    if (!salon) {
-      return NextResponse.json({ message: "Salon not found" }, { status: 404 });
-    }
-    
-    // Enforce business hours 9 AM - 8 PM only (no 24hr slots)
-    const openingTime = "09:00";
-    const closingTime = "20:00";
+    const requiredDuration = await resolveRequiredDuration({
+      serviceId,
+      serviceIdsParam,
+      quantitiesById,
+      safeQuantity,
+    });
 
-    // Get service(s) to know total required duration for this booking
-    // but keep slot grid on a fixed 30-min interval so times don't look "clubbed"
-    const baseInterval = 30; // minutes between slot start times
-    let requiredDuration = baseInterval; // total duration needed for this booking
-    if (serviceIdsParam || serviceId) {
-      const ids = (serviceIdsParam
-        ? serviceIdsParam.split(",").filter(Boolean)
-        : [serviceId]
-      ).map((id) => id.toString());
-
-      const services = await Service.find({ _id: { $in: ids } }).select("duration").lean();
-      if (services.length > 0) {
-        if (Object.keys(quantitiesById).length > 0) {
-          requiredDuration = services.reduce((sum, s) => {
-            const q = quantitiesById[s._id?.toString?.()] || safeQuantity;
-            return sum + (s.duration || baseInterval) * q;
-          }, 0);
-        } else {
-          requiredDuration = services.reduce(
-            (sum, s) => sum + (s.duration || baseInterval),
-            0
-          );
-          requiredDuration = requiredDuration * safeQuantity;
-        }
-      }
-    }
-    if (!serviceIdsParam && serviceId) {
-      // single-service path already covered; keep behavior consistent
-      requiredDuration = requiredDuration;
-    }
-
-    // Get existing appointments for this employee on this date
-    const startOfDay = new Date(date);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(date);
-    endOfDay.setHours(23, 59, 59, 999);
-
-    const existingAppointments = await Appointment.find({
-      employee: employeeId,
-      date: {
-        $gte: startOfDay,
-        $lte: endOfDay,
-      },
-      $or: [
-        { status: "confirmed" },
-        { status: "pending" },
-      ],
-    })
-      .populate("service")
-      .select("time service services totalDuration");
-
-    // Generate time slots
-    const slots = [];
-    const [openHour, openMin] = openingTime.split(":").map(Number);
-    const [closeHour, closeMin] = closingTime.split(":").map(Number);
-
+    const [openHour, openMin] = OPENING_TIME.split(":").map(Number);
+    const [closeHour, closeMin] = CLOSING_TIME.split(":").map(Number);
     const openMinutes = openHour * 60 + openMin;
     const closeMinutes = closeHour * 60 + closeMin;
+    const businessWindow = closeMinutes - openMinutes;
 
-    // Slot times are interpreted in IST (+05:30); compare to current instant via UTC ms.
-    const nowMs = Date.now();
-
-    // Generate slots on a fixed grid (e.g. every 30 min),
-    // but only keep those where the *full* requiredDuration fits.
-    for (let minutes = openMinutes; minutes + requiredDuration <= closeMinutes; minutes += baseInterval) {
-      const hour = Math.floor(minutes / 60);
-      const min = minutes % 60;
-      const timeString = `${hour.toString().padStart(2, "0")}:${min.toString().padStart(2, "0")}`;
-      const slotEndMinutes = minutes + requiredDuration;
-
-      // Compute this slot's start time in IST for the given date
-      const slotIstMs = Date.parse(`${date}T${timeString}:00+05:30`);
-
-      // Omit past slots entirely (do not list as booked/disabled)
-      if (slotIstMs < nowMs) continue;
-
-      // Check if this slot overlaps with any existing appointment
-      const isBooked = existingAppointments.some((apt) => {
-        if (!apt.time) return false;
-        
-        // Parse appointment time
-        const [aptHour, aptMin] = apt.time.split(":").map(Number);
-        const aptStartMinutes = aptHour * 60 + aptMin;
-        
-        // Get appointment duration:
-        // - Prefer totalDuration (multi-service)
-        // - Else sum of services[].duration
-        // - Else fallback to single service duration or 30 minutes
-        let aptDuration = apt.totalDuration;
-        if (!aptDuration && Array.isArray(apt.services) && apt.services.length > 0) {
-          aptDuration = apt.services.reduce(
-            (sum, s) => sum + (s.duration || 30),
-            0
-          );
-        }
-        if (!aptDuration) {
-          aptDuration = apt.service?.duration || 30;
-        }
-        const aptEndMinutes = aptStartMinutes + aptDuration;
-
-        // Check if slots overlap
-        // Slot overlaps if: slot starts before appointment ends AND slot ends after appointment starts
-        return minutes < aptEndMinutes && slotEndMinutes > aptStartMinutes;
-      });
-
-      slots.push({
-        time: timeString,
-        available: !isBooked,
+    if (requiredDuration > businessWindow) {
+      return NextResponse.json({
+        slots: [],
+        slotDuration: requiredDuration,
+        reason: "duration_exceeds_hours",
+        message:
+          "This booking needs more time than our daily service window (9 AM – 8 PM). Please reduce quantity or contact us.",
       });
     }
 
-    return NextResponse.json({ slots, slotDuration: requiredDuration });
+    const { start: startOfDay, end: endOfDay } = getIstDayBounds(date);
+    const nowMs = Date.now();
+
+    const perEmployeeSlots = [];
+
+    for (const eid of activeIds) {
+      const existingAppointments = await Appointment.find({
+        employee: eid,
+        date: { $gte: startOfDay, $lte: endOfDay },
+        $or: [{ status: "confirmed" }, { status: "pending" }],
+      })
+        .populate("service")
+        .select("time service services totalDuration");
+
+      perEmployeeSlots.push(
+        generateSlotsForEmployee({
+          date,
+          employeeId: eid,
+          existingAppointments,
+          requiredDuration,
+          openMinutes,
+          closeMinutes,
+          nowMs,
+        })
+      );
+    }
+
+    const slots = mergeSlotsAcrossEmployees(perEmployeeSlots);
+
+    let reason = null;
+    if (slots.length === 0) {
+      const lastPossibleStart = closeMinutes - requiredDuration;
+      const lastSlotIstMs = Date.parse(
+        `${date}T${String(Math.floor(lastPossibleStart / 60)).padStart(2, "0")}:${String(lastPossibleStart % 60).padStart(2, "0")}:00+05:30`
+      );
+      if (lastSlotIstMs < nowMs) {
+        reason = "all_past";
+      } else {
+        reason = "none_fit";
+      }
+    } else if (slots.every((s) => !s.available)) {
+      reason = "all_booked";
+    }
+
+    return NextResponse.json({ slots, slotDuration: requiredDuration, reason });
   } catch (error) {
-    return NextResponse.json(
-      { message: error.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ message: error.message }, { status: 500 });
   }
 }
-

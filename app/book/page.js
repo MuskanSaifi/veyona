@@ -71,6 +71,7 @@ function BookPageContent() {
   });
   const [loading, setLoading] = useState(false);
   const [loadingSlots, setLoadingSlots] = useState(false);
+  const [slotsReason, setSlotsReason] = useState(null);
   const [paymentPlan, setPaymentPlan] = useState("half"); // "half" | "full" | "book_now_pay_later"
   const [couponInput, setCouponInput] = useState("");
   const [couponApplied, setCouponApplied] = useState(null); // { code, discountAmount, totalAfterDiscount }
@@ -390,12 +391,14 @@ function BookPageContent() {
   }, [service]);
 
   useEffect(() => {
-    if (formData.employee && formData.date) {
+    if (formData.date && employees.length > 0) {
       fetchTimeSlots();
     } else {
       setTimeSlots([]);
+      setSlotsReason(null);
     }
-  }, [formData.employee, formData.date, JSON.stringify(serviceQty)]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.date, employees.length, JSON.stringify(serviceQty)]);
 
   const fetchEmployees = async () => {
     const primaryServiceId = serviceIdStr(service?._id || serviceId);
@@ -433,7 +436,8 @@ function BookPageContent() {
 
       setEmployees(list);
       if (list.length > 0) {
-        setFormData((prev) => ({ ...prev, employee: list[0]._id }));
+        const firstId = serviceIdStr(list[0]._id);
+        setFormData((prev) => ({ ...prev, employee: firstId }));
         setFallbackSalonId(null);
       } else {
         setFormData((prev) => ({ ...prev, employee: "" }));
@@ -444,7 +448,13 @@ function BookPageContent() {
   };
 
   const fetchTimeSlots = async () => {
+    if (!formData.date || employees.length === 0) {
+      setTimeSlots([]);
+      setSlotsReason(null);
+      return;
+    }
     setLoadingSlots(true);
+    setSlotsReason(null);
     try {
       const ids =
         servicesList.length > 0
@@ -454,8 +464,11 @@ function BookPageContent() {
             : serviceId
               ? [serviceIdStr(serviceId)].filter(Boolean)
               : [];
+      const employeeIds = employees
+        .map((e) => serviceIdStr(e._id))
+        .filter(Boolean);
       const params = new URLSearchParams({
-        employeeId: formData.employee,
+        employeeIds: employeeIds.join(","),
         date: formData.date,
       });
       if (ids.length === 1) {
@@ -471,13 +484,23 @@ function BookPageContent() {
         `/api/appointment/available-slots?${params.toString()}`
       );
       const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.message || "Could not load time slots");
+        setTimeSlots([]);
+        setSlotsReason(null);
+        return;
+      }
       const slots = data.slots || [];
       setTimeSlots(slots);
-      setFormData((prev) =>
-        prev.time && !slots.some((s) => s.time === prev.time)
-          ? { ...prev, time: "" }
-          : prev
-      );
+      setSlotsReason(data.reason || null);
+      setFormData((prev) => {
+        const matched = slots.find((s) => s.time === prev.time && s.available);
+        return {
+          ...prev,
+          time: matched ? prev.time : "",
+          employee: matched?.employeeIds?.[0] || prev.employee,
+        };
+      });
     } catch (error) {
       console.error("Error fetching time slots:", error);
       toast.error("Error loading available time slots");
@@ -1190,7 +1213,7 @@ function BookPageContent() {
             </p>
           )}
 
-          {formData.employee && formData.date && (
+          {employees.length > 0 && formData.date && (
             <div style={{ marginBottom: 20 }}>
               <label style={{ display: "block", marginBottom: 8, fontWeight: 500 }}>
                 Select time slot *
@@ -1198,17 +1221,39 @@ function BookPageContent() {
               {loadingSlots ? (
                 <p style={{ color: "#6b7280" }}>Loading available slots...</p>
               ) : timeSlots.length === 0 ? (
-                <p style={{ color: "#ef4444" }}>No available slots for this date</p>
+                <p style={{ color: "#ef4444" }}>
+                  {slotsReason === "duration_exceeds_hours"
+                    ? "This service needs more time than we can fit in one day (9 AM – 8 PM). Try reducing quantity or contact us."
+                    : slotsReason === "all_past"
+                    ? "No more slots left today. Please pick a future date."
+                    : "No available slots for this date. Try another date."}
+                </p>
+              ) : timeSlots.every((s) => !s.available) ? (
+                <p style={{ color: "#ef4444" }}>
+                  All slots are booked for this date. Please try another date.
+                </p>
               ) : (
                 <select
                   value={formData.time}
-                  onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                  onChange={(e) => {
+                    const time = e.target.value;
+                    const slot = timeSlots.find((s) => s.time === time && s.available);
+                    setFormData({
+                      ...formData,
+                      time,
+                      employee: slot?.employeeIds?.[0] || formData.employee,
+                    });
+                  }}
                   style={inputStyle}
                   required
                 >
                   <option value="">Select a time</option>
                   {timeSlots.map((slot) => (
-                    <option key={slot.time} value={slot.time} disabled={!slot.available}>
+                    <option
+                      key={slot.time}
+                      value={slot.time}
+                      disabled={!slot.available}
+                    >
                       {formatTimeSlot12h(slot.time)}
                       {!slot.available ? " (Booked)" : ""}
                     </option>
