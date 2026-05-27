@@ -9,6 +9,7 @@ import jwt from "jsonwebtoken";
 import { sendWhatsAppTemplate } from "@/lib/whatsapp";
 import { escapeRegex } from "@/lib/customerLookup";
 import { computeOrderTotals } from "@/lib/cartPricing";
+import { resolveSalonForBooking } from "@/lib/bookingSalon";
 
 function getEffectiveExpiry(coupon) {
   if (!coupon) return null;
@@ -130,9 +131,31 @@ export async function POST(req) {
       serviceIds = [service];
     }
 
-    if (!customerName || !customerEmail || !customerPhone || !salon || serviceIds.length === 0 || !date || !time) {
+    if (
+      !customerName ||
+      !customerEmail ||
+      !customerPhone ||
+      serviceIds.length === 0 ||
+      !date ||
+      !time
+    ) {
       return NextResponse.json(
         { message: "All fields are required" },
+        { status: 400 }
+      );
+    }
+
+    const resolvedSalon = await resolveSalonForBooking({
+      salon: salon || null,
+      employeeId: employee || null,
+      serviceIds,
+    });
+    if (!resolvedSalon) {
+      return NextResponse.json(
+        {
+          message:
+            "No salon is configured for this service. Please add an active salon in admin or link employees to a salon.",
+        },
         { status: 400 }
       );
     }
@@ -264,7 +287,7 @@ export async function POST(req) {
         }
       : {
           customer: customer._id,
-          salon,
+          salon: resolvedSalon,
           date: dateD,
           time,
           $or: [{ status: "confirmed" }, { status: "pending" }],
@@ -340,7 +363,7 @@ export async function POST(req) {
 
     const appointment = await Appointment.create({
       customer: customer._id,
-      salon,
+      salon: resolvedSalon,
       ...(employee ? { employee } : {}),
       service: primaryServiceId,
       services: servicesPayload,

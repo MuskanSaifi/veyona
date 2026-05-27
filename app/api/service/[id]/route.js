@@ -77,25 +77,28 @@ export async function PUT(req, { params }) {
     }
 
     const updateData = {};
+    const unsetData = {};
     if (name) updateData.name = name;
     if (description !== null) updateData.description = description;
-    
-    // Update price/originalPrice/duration based on children count
-    if (childrenCount === 0) {
-      // Leaf node (no children) - can have price/duration to be bookable
-      if (finalPrice !== undefined) updateData.price = finalPrice;
-      if (finalOriginalPrice !== undefined) updateData.originalPrice = finalOriginalPrice;
-      if (finalDuration !== undefined) updateData.duration = finalDuration;
-      
-      if (price === "" || price === "null") updateData.price = undefined;
-      if (originalPrice === "" || originalPrice === "null") updateData.originalPrice = undefined;
-      if (duration === "" || duration === "null") updateData.duration = undefined;
-    } else {
-      // Has children - grouping service, must remove price/duration
-      updateData.price = undefined;
-      updateData.originalPrice = undefined;
-      updateData.duration = undefined;
-    }
+
+    const setNumeric = (field, raw, finalVal) => {
+      if (childrenCount > 0) {
+        unsetData[field] = "";
+        return;
+      }
+      if (raw === "" || raw === "null") {
+        unsetData[field] = "";
+        return;
+      }
+      if (finalVal === undefined || finalVal === null || Number.isNaN(finalVal)) {
+        return;
+      }
+      updateData[field] = finalVal;
+    };
+
+    setNumeric("price", price, finalPrice);
+    setNumeric("originalPrice", originalPrice, finalOriginalPrice);
+    setNumeric("duration", duration, finalDuration);
     
     if (category) updateData.category = category;
     if (finalParentService !== undefined) {
@@ -115,16 +118,33 @@ export async function PUT(req, { params }) {
         }
       }
     }
-    if (order) updateData.order = parseInt(order);
-    if (order === "" || order === "null") updateData.order = 0;
+    if (order !== null && order !== undefined) {
+      if (order === "" || order === "null") {
+        updateData.order = 0;
+      } else {
+        const parsedOrder = parseInt(order, 10);
+        if (!Number.isNaN(parsedOrder)) updateData.order = parsedOrder;
+      }
+    }
     if (active !== null) updateData.active = active === "true";
     if (isVideoConsultation !== null && isVideoConsultation !== undefined) {
       updateData.isVideoConsultation = isVideoConsultation === "true";
     }
 
-    if (file && file !== "null") {
+    const hasNewImage =
+      file &&
+      file !== "null" &&
+      typeof file === "object" &&
+      typeof file.arrayBuffer === "function" &&
+      (file.size == null || file.size > 0);
+
+    if (hasNewImage) {
       if (service.public_id) {
-        await cloudinary.uploader.destroy(service.public_id);
+        try {
+          await cloudinary.uploader.destroy(service.public_id);
+        } catch {
+          /* ignore destroy errors */
+        }
       }
 
       const buffer = Buffer.from(await file.arrayBuffer());
@@ -133,15 +153,26 @@ export async function PUT(req, { params }) {
           { folder: "services" },
           (err, result) => {
             if (err) reject(err);
-            resolve(result);
+            else resolve(result);
           }
         ).end(buffer);
       });
+      if (!upload?.secure_url) {
+        return NextResponse.json(
+          { message: "Image upload failed. Please try again." },
+          { status: 500 }
+        );
+      }
       updateData.image = upload.secure_url;
       updateData.public_id = upload.public_id;
     }
 
-    const updated = await Service.findByIdAndUpdate(id, updateData, {
+    const mongoUpdate =
+      Object.keys(unsetData).length > 0
+        ? { $set: updateData, $unset: unsetData }
+        : updateData;
+
+    const updated = await Service.findByIdAndUpdate(id, mongoUpdate, {
       new: true,
     })
       .populate("category")

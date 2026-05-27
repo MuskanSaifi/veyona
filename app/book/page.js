@@ -11,6 +11,11 @@ import {
   CART_SERVICE_CHARGE_AMOUNT,
   computeOrderTotals,
 } from "@/lib/cartPricing";
+import {
+  getIndianStates,
+  getStateByName,
+  getCitiesForStateCode,
+} from "@/lib/indiaLocations";
 import styles from "./book.module.css";
 
 const BOOK_SERVICE_PLACEHOLDER_IMG =
@@ -29,6 +34,12 @@ function formatTimeSlot12h(time24) {
 function serviceIdStr(id) {
   if (id == null || id === "") return "";
   return String(id).trim();
+}
+
+function salonIdFromEmployee(emp) {
+  if (!emp?.salon) return "";
+  const s = emp.salon;
+  return serviceIdStr(s._id || s);
 }
 
 function BookPageContent() {
@@ -79,6 +90,23 @@ function BookPageContent() {
   const [user, setUser] = useState(null);
   const [razorpayReady, setRazorpayReady] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
+
+  const indianStates = useMemo(() => getIndianStates(), []);
+
+  const selectedStateCode = useMemo(() => {
+    const st = getStateByName(formData.state);
+    return st?.isoCode || "";
+  }, [formData.state, indianStates]);
+
+  const cityOptions = useMemo(() => {
+    if (!selectedStateCode) return [];
+    const names = getCitiesForStateCode(selectedStateCode).map((c) => c.name);
+    const current = (formData.city || "").trim();
+    if (current && !names.some((n) => n.toLowerCase() === current.toLowerCase())) {
+      return [current, ...names];
+    }
+    return names;
+  }, [selectedStateCode, formData.city]);
 
   const recomputeLocation = (dataOverride = {}) => {
     const data = { ...formData, ...dataOverride };
@@ -437,8 +465,26 @@ function BookPageContent() {
       setEmployees(list);
       if (list.length > 0) {
         const firstId = serviceIdStr(list[0]._id);
+        const salonFromList = list.map(salonIdFromEmployee).find(Boolean) || null;
         setFormData((prev) => ({ ...prev, employee: firstId }));
-        setFallbackSalonId(null);
+        if (salonFromList) {
+          setFallbackSalonId(salonFromList);
+        } else {
+          const catId =
+            service?.category?._id || service?.category || servicesList[0]?.category?._id;
+          const catType =
+            service?.category?.type || servicesList[0]?.category?.type;
+          const salonUrl = catId
+            ? `/api/salon?categoryId=${catId}`
+            : catType
+            ? `/api/salon?type=${catType}`
+            : null;
+          if (salonUrl) {
+            const sr = await fetch(salonUrl);
+            const salons = sr.ok ? await sr.json() : [];
+            if (salons?.[0]?._id) setFallbackSalonId(serviceIdStr(salons[0]._id));
+          }
+        }
       } else {
         setFormData((prev) => ({ ...prev, employee: "" }));
       }
@@ -547,12 +593,33 @@ function BookPageContent() {
       return;
     }
 
+    const empId = serviceIdStr(formData.employee);
     const selectedEmp = employees.find(
-      (e) => e._id === formData.employee || e._id?.toString() === formData.employee
+      (e) => serviceIdStr(e._id) === empId
     );
-    let salonId = selectedEmp?.salon?._id || selectedEmp?.salon || fallbackSalonId;
+    let salonId =
+      salonIdFromEmployee(selectedEmp) || serviceIdStr(fallbackSalonId);
+
     if (!salonId) {
-      toast.error("Could not determine salon for this booking");
+      const primary = service || servicesList[0];
+      const catId = primary?.category?._id || primary?.category;
+      const catType = primary?.category?.type;
+      const salonUrl = catId
+        ? `/api/salon?categoryId=${catId}`
+        : catType
+        ? `/api/salon?type=${catType}`
+        : null;
+      if (salonUrl) {
+        const sr = await fetch(salonUrl);
+        const salons = sr.ok ? await sr.json() : [];
+        salonId = serviceIdStr(salons?.[0]?._id);
+      }
+    }
+
+    if (!salonId) {
+      toast.error(
+        "No salon linked to this booking. Admin: add an active salon and link employees to it."
+      );
       return;
     }
 
@@ -1080,38 +1147,6 @@ function BookPageContent() {
                 </div>
                 <div>
                   <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: 500 }}>
-                    City{needsStructuredCustomerAddress ? " *" : ""}
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.city}
-                    onChange={(e) =>
-                      recomputeLocation({
-                        city: e.target.value,
-                      })
-                    }
-                    style={inputStyle}
-                    required={needsStructuredCustomerAddress}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: 500 }}>
-                    State{needsStructuredCustomerAddress ? " *" : ""}
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.state}
-                    onChange={(e) =>
-                      recomputeLocation({
-                        state: e.target.value,
-                      })
-                    }
-                    style={inputStyle}
-                    required={needsStructuredCustomerAddress}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: 500 }}>
                     Pincode{needsStructuredCustomerAddress ? " *" : ""}
                   </label>
                   <input
@@ -1127,6 +1162,59 @@ function BookPageContent() {
                     style={inputStyle}
                     required={needsStructuredCustomerAddress}
                   />
+                </div>
+                <div>
+                  <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: 500 }}>
+                    State{needsStructuredCustomerAddress ? " *" : ""}
+                  </label>
+                  <select
+                    value={selectedStateCode}
+                    onChange={(e) => {
+                      const code = e.target.value;
+                      const st = indianStates.find((s) => s.isoCode === code);
+                      recomputeLocation({
+                        state: st?.name || "",
+                        city: "",
+                      });
+                    }}
+                    style={inputStyle}
+                    required={needsStructuredCustomerAddress}
+                  >
+                    <option value="">Select state</option>
+                    {indianStates.map((s) => (
+                      <option key={s.isoCode} value={s.isoCode}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: 500 }}>
+                    City{needsStructuredCustomerAddress ? " *" : ""}
+                  </label>
+                  <select
+                    value={formData.city}
+                    onChange={(e) =>
+                      recomputeLocation({
+                        city: e.target.value,
+                      })
+                    }
+                    style={{
+                      ...inputStyle,
+                      opacity: selectedStateCode ? 1 : 0.7,
+                    }}
+                    disabled={!selectedStateCode}
+                    required={needsStructuredCustomerAddress}
+                  >
+                    <option value="">
+                      {selectedStateCode ? "Select city" : "Select state first"}
+                    </option>
+                    {cityOptions.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -1259,7 +1347,13 @@ function BookPageContent() {
                         disabled={!slot.available}
                       >
                         {formatTimeSlot12h(slot.time)}
-                        {!slot.available ? " (Booked)" : ""}
+                        {!slot.available
+                          ? slot.exceedsBusinessHours
+                            ? " (Not enough time)"
+                            : slot.afterCutoff
+                            ? " (After 6:30 not allowed)"
+                            : " (Booked)"
+                          : ""}
                       </option>
                     ))}
                   </select>

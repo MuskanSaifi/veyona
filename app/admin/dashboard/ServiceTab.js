@@ -135,7 +135,7 @@ export default function ServiceTab() {
     if (formData.order) {
       data.append("order", formData.order);
     }
-    if (formData.image) {
+    if (formData.image && formData.image.size > 0) {
       data.append("image", formData.image);
     }
     data.append("isVideoConsultation", formData.isVideoConsultation ? "true" : "false");
@@ -154,7 +154,13 @@ export default function ServiceTab() {
         });
       }
 
-      const result = await response.json();
+      let result = {};
+      const text = await response.text();
+      try {
+        result = text ? JSON.parse(text) : {};
+      } catch {
+        result = { message: text || "Server error" };
+      }
 
       if (!response.ok) {
         toast.error(result.message || "Error saving service");

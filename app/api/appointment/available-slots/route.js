@@ -5,8 +5,9 @@ import Employee from "@/models/Employee";
 import Service from "@/models/Service";
 
 const OPENING_TIME = "09:00";
-const CLOSING_TIME = "20:00";
+const CLOSING_TIME = "21:00";
 const BASE_INTERVAL = 30;
+const BOOKING_CUTOFF_TIME = "18:30"; // allow 18:30, disallow anything after
 
 function getIstDayBounds(dateStr) {
   const start = new Date(`${dateStr}T00:00:00+05:30`);
@@ -72,18 +73,24 @@ function generateSlotsForEmployee({
   requiredDuration,
   openMinutes,
   closeMinutes,
+  cutoffMinutes,
   nowMs,
 }) {
   const slots = [];
 
-  for (let minutes = openMinutes; minutes + requiredDuration <= closeMinutes; minutes += BASE_INTERVAL) {
+  for (let minutes = openMinutes; minutes <= closeMinutes - BASE_INTERVAL; minutes += BASE_INTERVAL) {
     const hour = Math.floor(minutes / 60);
     const min = minutes % 60;
     const timeString = `${hour.toString().padStart(2, "0")}:${min.toString().padStart(2, "0")}`;
     const slotEndMinutes = minutes + requiredDuration;
     const slotIstMs = Date.parse(`${date}T${timeString}:00+05:30`);
 
-    if (slotIstMs < nowMs) continue;
+    const isPast = slotIstMs < nowMs;
+    const exceedsBusinessHours = slotEndMinutes > closeMinutes;
+    const afterCutoff = minutes > cutoffMinutes;
+
+    // Past slots should not show in dropdown
+    if (isPast) continue;
 
     const isBooked = existingAppointments.some((apt) => {
       if (!apt.time) return false;
@@ -95,7 +102,9 @@ function generateSlotsForEmployee({
 
     slots.push({
       time: timeString,
-      available: !isBooked,
+      available: !isBooked && !exceedsBusinessHours && !afterCutoff,
+      exceedsBusinessHours,
+      afterCutoff,
       employeeId: String(employeeId),
     });
   }
@@ -114,9 +123,15 @@ function mergeSlotsAcrossEmployees(perEmployeeSlots) {
           time: slot.time,
           available: slot.available,
           employeeIds: slot.available ? [slot.employeeId] : [],
+          _seen: 1,
+          _exceedsSeen: slot.exceedsBusinessHours ? 1 : 0,
+          _cutoffSeen: slot.afterCutoff ? 1 : 0,
         });
         continue;
       }
+      existing._seen += 1;
+      if (slot.exceedsBusinessHours) existing._exceedsSeen += 1;
+      if (slot.afterCutoff) existing._cutoffSeen += 1;
       if (slot.available) {
         existing.available = true;
         if (!existing.employeeIds.includes(slot.employeeId)) {
@@ -126,7 +141,15 @@ function mergeSlotsAcrossEmployees(perEmployeeSlots) {
     }
   }
 
-  return Array.from(byTime.values()).sort((a, b) => a.time.localeCompare(b.time));
+  return Array.from(byTime.values())
+    .map((s) => ({
+      time: s.time,
+      available: s.available,
+      employeeIds: s.employeeIds,
+      exceedsBusinessHours: s._seen > 0 && s._exceedsSeen === s._seen,
+      afterCutoff: s._seen > 0 && s._cutoffSeen === s._seen,
+    }))
+    .sort((a, b) => a.time.localeCompare(b.time));
 }
 
 export async function GET(req) {
@@ -192,16 +215,8 @@ export async function GET(req) {
     const openMinutes = openHour * 60 + openMin;
     const closeMinutes = closeHour * 60 + closeMin;
     const businessWindow = closeMinutes - openMinutes;
-
-    if (requiredDuration > businessWindow) {
-      return NextResponse.json({
-        slots: [],
-        slotDuration: requiredDuration,
-        reason: "duration_exceeds_hours",
-        message:
-          "This booking needs more time than our daily service window (9 AM – 8 PM). Please reduce quantity or contact us.",
-      });
-    }
+    const [cutHour, cutMin] = BOOKING_CUTOFF_TIME.split(":").map(Number);
+    const cutoffMinutes = cutHour * 60 + cutMin;
 
     const { start: startOfDay, end: endOfDay } = getIstDayBounds(date);
     const nowMs = Date.now();
@@ -225,6 +240,7 @@ export async function GET(req) {
           requiredDuration,
           openMinutes,
           closeMinutes,
+          cutoffMinutes,
           nowMs,
         })
       );
@@ -243,6 +259,10 @@ export async function GET(req) {
       } else {
         reason = "none_fit";
       }
+    } else if (requiredDuration > businessWindow) {
+      reason = "duration_exceeds_hours";
+    } else if (slots.every((s) => s.past)) {
+      reason = "all_past";
     } else if (slots.every((s) => !s.available)) {
       reason = "all_booked";
     }
