@@ -1228,37 +1228,42 @@ function BookPageContent() {
                     ? "No more slots left today. Please pick a future date."
                     : "No available slots for this date. Try another date."}
                 </p>
-              ) : timeSlots.every((s) => !s.available) ? (
-                <p style={{ color: "#ef4444" }}>
-                  All slots are booked for this date. Please try another date.
-                </p>
               ) : (
-                <select
-                  value={formData.time}
-                  onChange={(e) => {
-                    const time = e.target.value;
-                    const slot = timeSlots.find((s) => s.time === time && s.available);
-                    setFormData({
-                      ...formData,
-                      time,
-                      employee: slot?.employeeIds?.[0] || formData.employee,
-                    });
-                  }}
-                  style={inputStyle}
-                  required
-                >
-                  <option value="">Select a time</option>
-                  {timeSlots.map((slot) => (
-                    <option
-                      key={slot.time}
-                      value={slot.time}
-                      disabled={!slot.available}
-                    >
-                      {formatTimeSlot12h(slot.time)}
-                      {!slot.available ? " (Booked)" : ""}
-                    </option>
-                  ))}
-                </select>
+                <>
+                  {timeSlots.every((s) => !s.available) && (
+                    <p style={{ color: "#ef4444", marginBottom: 8 }}>
+                      All slots are booked for this date. Please try another date.
+                    </p>
+                  )}
+                  <select
+                    value={formData.time}
+                    onChange={(e) => {
+                      const time = e.target.value;
+                      const slot = timeSlots.find(
+                        (s) => s.time === time && s.available
+                      );
+                      setFormData({
+                        ...formData,
+                        time,
+                        employee: slot?.employeeIds?.[0] || formData.employee,
+                      });
+                    }}
+                    style={inputStyle}
+                    required
+                  >
+                    <option value="">Select a time</option>
+                    {timeSlots.map((slot) => (
+                      <option
+                        key={slot.time}
+                        value={slot.time}
+                        disabled={!slot.available}
+                      >
+                        {formatTimeSlot12h(slot.time)}
+                        {!slot.available ? " (Booked)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </>
               )}
             </div>
           )}
