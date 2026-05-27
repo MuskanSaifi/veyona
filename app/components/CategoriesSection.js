@@ -158,9 +158,6 @@ export default function CategoriesSection({
                       fill
                       className="object-cover transition-transform duration-700 group-hover:scale-105"
                     />
-                    <div className="absolute left-5 top-5 w-12 h-12 rounded-full bg-white/95 shadow-sm flex items-center justify-center text-sm font-semibold text-[var(--accent-terracotta)]">
-                      {category.name?.[0] || "S"}
-                    </div>
                   </div>
                   <div className="p-6 bg-white">
                     <h3 className="text-lg sm:text-xl font-bold uppercase tracking-[0.35em] text-gray-900 mb-3">
