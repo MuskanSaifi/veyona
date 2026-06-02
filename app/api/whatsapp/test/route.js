@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { sendWhatsAppTemplate } from "@/lib/whatsapp";
 
 /**
- * GET /api/whatsapp/test?phone=XXXXXXXXXX&template=transactional_booking_received
+ * GET /api/whatsapp/test?phone=XXXXXXXXXX&template=transactional_booking_received_xp
  * Sends a live template message for quick Interakt/API verification.
  */
 export async function GET(req) {
@@ -15,7 +15,7 @@ export async function GET(req) {
     const template =
       searchParams.get("template") ||
       process.env.INTERAKT_TEMPLATE_BOOKING_RECEIVED ||
-      "transactional_booking_received";
+      "transactional_booking_received_xp";
 
     if (!phone) {
       return NextResponse.json(

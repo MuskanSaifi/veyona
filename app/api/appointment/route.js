@@ -408,7 +408,10 @@ export async function POST(req) {
 
     // Notify user instantly that booking request is received
     // Template placeholders expected: {{1}} = customer name, {{2}} = service names
-    const userTemplate = process.env.INTERAKT_TEMPLATE_BOOKING_RECEIVED || "transactional_booking_received";
+    // NOTE: Interakt expects the exact template name from the dashboard. The
+    // correct default for this app is `transactional_booking_received_xp`.
+    const userTemplate =
+      process.env.INTERAKT_TEMPLATE_BOOKING_RECEIVED || "transactional_booking_received_xp";
     if (populated.customer?.phone) {
       const customerLabel = customerName || populated.customer?.name || "Customer";
       const serviceLabel = servicesText || populated.service?.name || "your selected service";
