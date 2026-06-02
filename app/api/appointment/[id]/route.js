@@ -1,11 +1,19 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import Appointment from "@/models/Appointment";
+import Customer from "@/models/Customer";
 import mongoose from "mongoose";
 import { saveAppointmentDoc } from "@/lib/saveAppointmentDoc";
 import { sendWhatsAppTemplate } from "@/lib/whatsapp";
 import { sendPaidInvoiceEmailIfNeeded } from "@/lib/billingEmail";
+import { sendServiceOtpWhatsApp, sendFeedbackRequestWhatsApp } from "@/lib/serviceWhatsapp";
 import jwt from "jsonwebtoken";
+
+const SERVICE_OTP_TTL_MINUTES = 5;
+
+function generateServiceOtpCode() {
+  return String(Math.floor(1000 + Math.random() * 9000));
+}
 
 function getAuth(req) {
   const adminToken = req.cookies.get("adminToken")?.value;
@@ -71,13 +79,18 @@ export async function PUT(req, { params }) {
     } = body;
 
     // Do not populate before save — saving a populated doc can cause cast/validation errors.
-    const appointment = await Appointment.findById(id);
+    const appointment = await Appointment.findById(id).select("+serviceOtpCode +serviceOtpAttempts");
     if (!appointment) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
     /** Employee / admin: record when in-home or in-salon service actually started / ended */
-    if (trackingAction === "start_service" || trackingAction === "end_service") {
+    if (
+      trackingAction === "send_service_otp" ||
+      trackingAction === "verify_service_otp" ||
+      trackingAction === "start_service" ||
+      trackingAction === "end_service"
+    ) {
       if (auth.role !== "admin" && auth.role !== "employee") {
         return NextResponse.json({ message: "Not allowed" }, { status: 403 });
       }
@@ -93,7 +106,75 @@ export async function PUT(req, { params }) {
           { status: 400 }
         );
       }
+      if (trackingAction === "send_service_otp") {
+        if (appointment.serviceStartedAt) {
+          return NextResponse.json({ message: "Service already started" }, { status: 400 });
+        }
+        const customer = await Customer.findById(appointment.customer);
+        if (!customer?.phone) {
+          return NextResponse.json(
+            { message: "Customer phone not found for OTP verification" },
+            { status: 400 }
+          );
+        }
+        const code = generateServiceOtpCode();
+        appointment.serviceOtpCode = code;
+        appointment.serviceOtpSentAt = new Date();
+        appointment.serviceOtpExpiresAt = new Date(Date.now() + SERVICE_OTP_TTL_MINUTES * 60 * 1000);
+        appointment.serviceOtpVerifiedAt = undefined;
+        appointment.serviceOtpAttempts = 0;
+        await saveAppointmentDoc(appointment);
+        const whatsapp = await sendServiceOtpWhatsApp(customer.phone, code);
+        return NextResponse.json({
+          success: true,
+          message: whatsapp?.success
+            ? "OTP sent to customer on WhatsApp"
+            : whatsapp?.message || "OTP generated but WhatsApp failed",
+          otpExpiresAt: appointment.serviceOtpExpiresAt,
+          whatsapp,
+        });
+      }
+
+      if (trackingAction === "verify_service_otp") {
+        if (appointment.serviceStartedAt) {
+          return NextResponse.json({ message: "Service already started" }, { status: 400 });
+        }
+        const otpCode = String(body?.trackingOtpCode || "").trim();
+        if (!otpCode) {
+          return NextResponse.json({ message: "OTP is required" }, { status: 400 });
+        }
+        if (!appointment.serviceOtpCode || !appointment.serviceOtpExpiresAt) {
+          return NextResponse.json(
+            { message: "No active OTP. Please send OTP first." },
+            { status: 400 }
+          );
+        }
+        if (appointment.serviceOtpExpiresAt.getTime() < Date.now()) {
+          appointment.serviceOtpCode = undefined;
+          appointment.serviceOtpExpiresAt = undefined;
+          await saveAppointmentDoc(appointment);
+          return NextResponse.json({ message: "OTP expired. Please resend OTP." }, { status: 400 });
+        }
+        if (otpCode !== String(appointment.serviceOtpCode)) {
+          appointment.serviceOtpAttempts = Number(appointment.serviceOtpAttempts || 0) + 1;
+          await saveAppointmentDoc(appointment);
+          return NextResponse.json({ message: "Invalid OTP" }, { status: 400 });
+        }
+        appointment.serviceOtpVerifiedAt = new Date();
+        appointment.serviceOtpCode = undefined;
+        appointment.serviceOtpExpiresAt = undefined;
+        appointment.serviceOtpAttempts = 0;
+        await saveAppointmentDoc(appointment);
+        return NextResponse.json({ success: true, message: "Customer OTP verified" });
+      }
+
       if (trackingAction === "start_service") {
+        if (!appointment.serviceOtpVerifiedAt) {
+          return NextResponse.json(
+            { message: "Verify customer OTP before starting service" },
+            { status: 400 }
+          );
+        }
         if (!appointment.serviceStartedAt) {
           appointment.serviceStartedAt = new Date();
         }
@@ -102,6 +183,12 @@ export async function PUT(req, { params }) {
           return NextResponse.json({ message: "Start service before recording end time" }, { status: 400 });
         }
         appointment.serviceEndedAt = new Date();
+        const customer = await Customer.findById(appointment.customer);
+        if (customer?.phone) {
+          sendFeedbackRequestWhatsApp(customer.phone, String(appointment._id)).catch((err) =>
+            console.error("WhatsApp service feedback failed:", err)
+          );
+        }
       }
       await saveAppointmentDoc(appointment);
       const tracked = await Appointment.findById(id)

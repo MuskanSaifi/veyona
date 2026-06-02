@@ -102,6 +102,11 @@ const appointmentSchema = new mongoose.Schema(
     notes: String,
     location: String, // User's address for in-person appointments (not required for video consultation)
     /** Employee taps start/end on dashboard — shown to admin */
+    serviceOtpCode: { type: String, select: false },
+    serviceOtpSentAt: { type: Date },
+    serviceOtpExpiresAt: { type: Date },
+    serviceOtpVerifiedAt: { type: Date },
+    serviceOtpAttempts: { type: Number, default: 0, select: false },
     serviceStartedAt: { type: Date },
     serviceEndedAt: { type: Date },
     /** Set when paid-in-full invoice was emailed (idempotency) */

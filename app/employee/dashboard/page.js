@@ -155,6 +155,47 @@ export default function EmployeeDashboard() {
     }
   };
 
+  const verifyCustomerForService = async (aptId) => {
+    try {
+      const sendRes = await fetch(`/api/appointment/${aptId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trackingAction: "send_service_otp" }),
+      });
+      const sendData = await sendRes.json().catch(() => ({}));
+      if (!sendRes.ok) {
+        toast.error(sendData.message || "Could not send OTP");
+        return;
+      }
+      toast.success(sendData.message || "OTP sent to customer");
+
+      const enteredOtp = prompt("Customer ko bheja gaya OTP enter karein:");
+      if (!enteredOtp) {
+        toast("OTP send ho gaya. Verify karne ke liye dobara Verify Customer click karein.");
+        fetchAppointments();
+        return;
+      }
+
+      const verifyRes = await fetch(`/api/appointment/${aptId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trackingAction: "verify_service_otp",
+          trackingOtpCode: String(enteredOtp).trim(),
+        }),
+      });
+      const verifyData = await verifyRes.json().catch(() => ({}));
+      if (!verifyRes.ok) {
+        toast.error(verifyData.message || "OTP verification failed");
+        return;
+      }
+      toast.success("Customer verified. Ab Start Service available hai.");
+      fetchAppointments();
+    } catch {
+      toast.error("Network error");
+    }
+  };
+
   return (
     <div className={styles.container}>
       <div className={styles.header}>
@@ -384,7 +425,17 @@ export default function EmployeeDashboard() {
                           <div>Started: {formatTrackTime(apt.serviceStartedAt)}</div>
                           <div>Ended: {formatTrackTime(apt.serviceEndedAt)}</div>
                         </div>
-                        {apt.status === "confirmed" && !apt.serviceStartedAt && (
+                        {apt.status === "confirmed" && !apt.serviceStartedAt && !apt.serviceOtpVerifiedAt && (
+                          <button
+                            type="button"
+                            className={styles.statusSelect}
+                            style={{ marginTop: 6, width: "100%", backgroundColor: "#0ea5e9", color: "white" }}
+                            onClick={() => verifyCustomerForService(apt._id)}
+                          >
+                            Verify customer
+                          </button>
+                        )}
+                        {apt.status === "confirmed" && !apt.serviceStartedAt && apt.serviceOtpVerifiedAt && (
                           <button
                             type="button"
                             className={styles.statusSelect}
@@ -523,7 +574,17 @@ export default function EmployeeDashboard() {
                         <br />
                         Ended: {formatTrackTime(apt.serviceEndedAt)}
                       </div>
-                      {apt.status === "confirmed" && !apt.serviceStartedAt && (
+                      {apt.status === "confirmed" && !apt.serviceStartedAt && !apt.serviceOtpVerifiedAt && (
+                        <button
+                          type="button"
+                          className={styles.addCashBtn}
+                          style={{ backgroundColor: "#0ea5e9", width: "100%" }}
+                          onClick={() => verifyCustomerForService(apt._id)}
+                        >
+                          Verify customer
+                        </button>
+                      )}
+                      {apt.status === "confirmed" && !apt.serviceStartedAt && apt.serviceOtpVerifiedAt && (
                         <button
                           type="button"
                           className={styles.addCashBtn}
