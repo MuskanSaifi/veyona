@@ -26,11 +26,44 @@ export default function EmployeeTab() {
   const [categoryServices, setCategoryServices] = useState([]);
   const [loadingServices, setLoadingServices] = useState(false);
   const [listSearch, setListSearch] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [receivedByEmployee, setReceivedByEmployee] = useState({});
+  const [receivedLoading, setReceivedLoading] = useState(false);
 
   const fetchEmployees = async () => {
     const res = await fetch("/api/employee");
     const data = await res.json();
     setEmployees(Array.isArray(data) ? data : []);
+  };
+
+  const fetchReceivedSummary = async (from = fromDate, to = toDate) => {
+    setReceivedLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (from) params.set("from", from);
+      if (to) params.set("to", to);
+      const qs = params.toString();
+      const res = await fetch(`/api/admin/employee/received${qs ? `?${qs}` : ""}`, {
+        cache: "no-store",
+      });
+      const data = await res.json().catch(() => ({}));
+      const map = {};
+      for (const row of data?.rows || []) {
+        if (!row?.employeeId) continue;
+        map[String(row.employeeId)] = {
+          totalReceived: Number(row.totalReceived || 0),
+          receivedOnline: Number(row.receivedOnline || 0),
+          receivedCash: Number(row.receivedCash || 0),
+          receivedCount: Number(row.receivedCount || 0),
+        };
+      }
+      setReceivedByEmployee(map);
+    } catch {
+      setReceivedByEmployee({});
+    } finally {
+      setReceivedLoading(false);
+    }
   };
 
   const employeeListMatches = (emp, rawQ) => {
@@ -63,6 +96,7 @@ export default function EmployeeTab() {
     fetchEmployees();
     fetchSalons();
     fetchCategories();
+    fetchReceivedSummary();
   }, []);
 
   const handleCategoryToggle = (categoryId) => {
@@ -231,6 +265,11 @@ export default function EmployeeTab() {
 
   const safeEmployees = Array.isArray(employees) ? employees : [];
   const filteredEmployees = safeEmployees.filter((e) => employeeListMatches(e, listSearch));
+  const formatCurrency = (value) =>
+    `₹${Number(value || 0).toLocaleString("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
 
   return (
     <div>
@@ -267,7 +306,7 @@ export default function EmployeeTab() {
       </div>
 
       {safeEmployees.length > 0 && (
-        <div style={{ marginBottom: 16, maxWidth: 420 }}>
+        <div style={{ marginBottom: 16, maxWidth: 920 }}>
           <label htmlFor="employee-list-search" style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#374151", fontSize: 14 }}>
             Search employees
           </label>
@@ -286,7 +325,54 @@ export default function EmployeeTab() {
               boxSizing: "border-box",
             }}
           />
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10, alignItems: "end" }}>
+            <div>
+              <label style={{ display: "block", fontSize: 12, color: "#6b7280", marginBottom: 4 }}>
+                From
+              </label>
+              <input
+                type="date"
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value)}
+                style={{ ...styles.inputStyle, marginBottom: 0, minWidth: 150 }}
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: 12, color: "#6b7280", marginBottom: 4 }}>
+                To
+              </label>
+              <input
+                type="date"
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
+                style={{ ...styles.inputStyle, marginBottom: 0, minWidth: 150 }}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => fetchReceivedSummary(fromDate, toDate)}
+              style={{ ...styles.addButton, padding: "10px 14px" }}
+            >
+              Apply dates
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setFromDate("");
+                setToDate("");
+                fetchReceivedSummary("", "");
+              }}
+              style={{ ...styles.cancelButton, padding: "10px 14px" }}
+            >
+              Clear
+            </button>
+          </div>
         </div>
+      )}
+      {receivedLoading && (
+        <p style={{ marginTop: -8, marginBottom: 12, color: "#64748b", fontSize: 13 }}>
+          Updating received amounts…
+        </p>
       )}
 
       {safeEmployees.length === 0 ? (
@@ -325,6 +411,9 @@ export default function EmployeeTab() {
                   <strong>Phone:</strong> {employee.phone}
                   <br />
                   <strong>Email:</strong> {employee.email}
+                  <br />
+                  <strong>Received:</strong>{" "}
+                  {formatCurrency(receivedByEmployee[String(employee._id)]?.totalReceived || 0)}
                   {employee.experience ? (
                     <>
                       <br />
@@ -351,6 +440,7 @@ export default function EmployeeTab() {
                 <th style={styles.table.th}>Phone</th>
                 <th style={styles.table.th}>Salon</th>
                 <th style={styles.table.th}>Specialization</th>
+                <th style={{ ...styles.table.th, textAlign: "right" }}>Received</th>
                 <th style={styles.table.th}>Status</th>
                 <th style={styles.table.th}>Actions</th>
               </tr>
@@ -404,6 +494,21 @@ export default function EmployeeTab() {
                     ) : (
                       <p style={styles.table.textSmall}>N/A</p>
                     )}
+                  </td>
+                  <td
+                    style={{
+                      ...styles.table.td,
+                      textAlign: "right",
+                      fontWeight: 700,
+                      color: "#0f766e",
+                    }}
+                  >
+                    {formatCurrency(receivedByEmployee[String(employee._id)]?.totalReceived || 0)}
+                    <p style={styles.table.textSmall}>
+                      O {formatCurrency(receivedByEmployee[String(employee._id)]?.receivedOnline || 0)}
+                      {" · "}
+                      C {formatCurrency(receivedByEmployee[String(employee._id)]?.receivedCash || 0)}
+                    </p>
                   </td>
                   <td style={styles.table.td}>
                     <span

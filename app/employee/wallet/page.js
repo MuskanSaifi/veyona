@@ -54,24 +54,49 @@ export default function EmployeeWalletPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+
+  const loadWallet = async (range = {}) => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ limit: "200" });
+      const from = Object.prototype.hasOwnProperty.call(range, "from")
+        ? range.from
+        : fromDate;
+      const to = Object.prototype.hasOwnProperty.call(range, "to")
+        ? range.to
+        : toDate;
+      if (from) params.set("from", from);
+      if (to) params.set("to", to);
+      const res = await fetch(`/api/employee/wallet?${params.toString()}`, {
+        cache: "no-store",
+      });
+      if (res.status === 401) {
+        router.push("/employee/login");
+        return;
+      }
+      const json = await res.json();
+      setData(json);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch("/api/employee/wallet?limit=200", {
-          cache: "no-store",
-        });
-        if (res.status === 401) {
-          router.push("/employee/login");
-          return;
-        }
-        const json = await res.json();
-        setData(json);
-      } finally {
-        setLoading(false);
-      }
-    })();
+    loadWallet();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
+
+  const applyDateFilter = () => {
+    loadWallet();
+  };
+
+  const clearDateFilter = () => {
+    setFromDate("");
+    setToDate("");
+    loadWallet({ from: "", to: "" });
+  };
 
   const filtered = useMemo(() => {
     const list = data?.transactions || [];
@@ -90,6 +115,7 @@ export default function EmployeeWalletPage() {
   const balance = data?.balance || 0;
   const totalCredit = data?.totalCredit || 0;
   const totalDebit = data?.totalDebit || 0;
+  const paymentSummary = data?.paymentSummary || {};
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -107,6 +133,44 @@ export default function EmployeeWalletPage() {
         <p className="text-slate-500 mb-6">
           Track your earnings, bonuses and deductions.
         </p>
+
+        <div className="bg-white rounded-2xl border border-slate-200 p-4 mb-5">
+          <div className="text-sm font-semibold text-slate-700 mb-3">Filter by date range</div>
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">From</label>
+              <input
+                type="date"
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value)}
+                className="border border-slate-300 rounded-lg px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">To</label>
+              <input
+                type="date"
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
+                className="border border-slate-300 rounded-lg px-3 py-2 text-sm"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={applyDateFilter}
+              className="bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-lg"
+            >
+              Apply
+            </button>
+            <button
+              type="button"
+              onClick={clearDateFilter}
+              className="bg-slate-100 text-slate-700 text-sm font-semibold px-4 py-2 rounded-lg"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
 
         {/* Balance card */}
         <div className="bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-2xl p-6 sm:p-8 shadow-md mb-5">
@@ -137,6 +201,33 @@ export default function EmployeeWalletPage() {
             </div>
             <div className="text-xl sm:text-2xl font-bold text-rose-600">
               {formatCurrency(totalDebit)}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+          <div className="bg-white rounded-2xl p-4 border border-slate-200">
+            <div className="text-xs uppercase tracking-wider text-slate-500 mb-1">
+              Received from clients
+            </div>
+            <div className="text-2xl font-bold text-blue-700">
+              {formatCurrency(paymentSummary.totalReceived || 0)}
+            </div>
+          </div>
+          <div className="bg-white rounded-2xl p-4 border border-slate-200">
+            <div className="text-xs uppercase tracking-wider text-slate-500 mb-1">
+              Online received
+            </div>
+            <div className="text-xl font-bold text-emerald-600">
+              {formatCurrency(paymentSummary.receivedOnline || 0)}
+            </div>
+          </div>
+          <div className="bg-white rounded-2xl p-4 border border-slate-200">
+            <div className="text-xs uppercase tracking-wider text-slate-500 mb-1">
+              Cash received
+            </div>
+            <div className="text-xl font-bold text-indigo-600">
+              {formatCurrency(paymentSummary.receivedCash || 0)}
             </div>
           </div>
         </div>
