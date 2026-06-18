@@ -1,8 +1,14 @@
 "use client";
 import { useEffect, useState } from "react";
 import Image from "next/image";
-import Link from "next/link";
-import { FaChevronDown, FaChevronRight, FaArrowRight } from "react-icons/fa";
+import { useDispatch, useSelector } from "react-redux";
+import toast from "react-hot-toast";
+import {
+  incrementBookingService,
+  decrementBookingService,
+  selectBookingQty,
+} from "@/lib/bookingCartSlice";
+import { FaChevronDown, FaChevronRight } from "react-icons/fa";
 
 // Default placeholder image - using a data URL as fallback
 const DEFAULT_IMAGE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Crect fill='%23e5e7eb' width='200' height='200'/%3E%3Ctext fill='%239ca3af' font-family='sans-serif' font-size='14' x='50%25' y='50%25' text-anchor='middle' dy='.3em'%3ENo Image%3C/text%3E%3C/svg%3E";
@@ -19,6 +25,76 @@ function ServicePriceLabels({ service, size = "sm" }) {
       )}
       <span>₹{service.price}</span>
     </span>
+  );
+}
+
+function ServiceCartControls({ serviceId, serviceName, variant = "parent" }) {
+  const dispatch = useDispatch();
+  const qty = useSelector((state) => selectBookingQty(state, serviceId));
+
+  const stop = (e) => e.stopPropagation();
+
+  const handleAdd = (e) => {
+    stop(e);
+    dispatch(incrementBookingService(serviceId));
+    toast.success("Added to cart");
+  };
+
+  const handleIncrement = (e) => {
+    stop(e);
+    if (qty >= 20) {
+      toast.error("Maximum 20 per service");
+      return;
+    }
+    dispatch(incrementBookingService(serviceId));
+    toast.success("Added to cart");
+  };
+
+  const handleDecrement = (e) => {
+    stop(e);
+    dispatch(decrementBookingService(serviceId));
+  };
+
+  const isParent = variant === "parent";
+  const btnSize = isParent
+    ? "w-10 h-10 sm:w-11 sm:h-11 text-lg sm:text-xl"
+    : "w-9 h-9 sm:w-10 sm:h-10 text-base sm:text-lg";
+  const bookClass = isParent
+    ? "px-3.5 py-2 bg-gradient-to-r from-[var(--accent-terracotta)] to-[var(--accent-coral)] text-white text-sm sm:text-base font-semibold rounded-lg hover:shadow-md transition-all duration-200 whitespace-nowrap min-w-[56px] text-center"
+    : "px-3 py-1.5 bg-[var(--accent-terracotta)] text-white text-sm font-semibold rounded-md hover:opacity-90 transition-all duration-200 whitespace-nowrap min-w-[48px] text-center";
+
+  return (
+    <div className="inline-flex items-center gap-1.5 sm:gap-2 flex-shrink-0 touch-manipulation" onClick={stop}>
+      <button
+        type="button"
+        onClick={handleDecrement}
+        disabled={qty === 0}
+        className={`${btnSize} rounded-full border-2 border-gray-300 bg-white font-bold text-gray-800 flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-50 active:scale-95 transition-all shadow-sm`}
+        aria-label={`Decrease quantity for ${serviceName}`}
+      >
+        −
+      </button>
+      {qty > 0 ? (
+        <span
+          className={`${bookClass} inline-flex items-center justify-center`}
+          aria-label={`${qty} in cart`}
+        >
+          {qty}
+        </span>
+      ) : (
+        <button type="button" onClick={handleAdd} className={bookClass} aria-label={`Add ${serviceName} to cart`}>
+          Book
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={qty === 0 ? handleAdd : handleIncrement}
+        className={`${btnSize} rounded-full border-2 border-gray-300 bg-white font-bold text-gray-800 flex items-center justify-center hover:bg-gray-50 active:scale-95 transition-all shadow-sm`}
+        aria-label={`Increase quantity for ${serviceName}`}
+      >
+        +
+      </button>
+    </div>
   );
 }
 
@@ -166,14 +242,11 @@ export default function ServicesSection({ category, typeFilter }) {
 
                     <div className="flex items-center gap-2 flex-shrink-0">
                       {canBook && (
-                        <Link
-                          href={`/book?service=${parentService._id}`}
-                          className="px-3 py-1.5 bg-gradient-to-r from-[var(--accent-terracotta)] to-[var(--accent-coral)] text-white text-xs sm:text-sm font-semibold rounded-lg hover:shadow-md transform hover:scale-105 transition-all duration-200 flex items-center gap-1 whitespace-nowrap"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <span>Book</span>
-                          <FaArrowRight className="w-3 h-3" />
-                        </Link>
+                        <ServiceCartControls
+                          serviceId={parentService._id}
+                          serviceName={parentService.name}
+                          variant="parent"
+                        />
                       )}
                       {hasChildren && (
                         <button
@@ -247,14 +320,11 @@ export default function ServicesSection({ category, typeFilter }) {
 
                               <div className="flex items-center gap-1.5 flex-shrink-0">
                                 {canBookChild && (
-                                  <Link
-                                    href={`/book?service=${child._id}`}
-                                    className="px-2.5 py-1 bg-[var(--accent-terracotta)] text-white text-xs font-semibold rounded-md hover:opacity-90 transform hover:scale-105 transition-all duration-200 flex items-center gap-1 whitespace-nowrap"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    <FaArrowRight className="w-2.5 h-2.5" />
-                                    <span>Book</span>
-                                  </Link>
+                                  <ServiceCartControls
+                                    serviceId={child._id}
+                                    serviceName={child.name}
+                                    variant="child"
+                                  />
                                 )}
                                 {hasGrandChildren && (
                                   <button
@@ -316,13 +386,11 @@ export default function ServicesSection({ category, typeFilter }) {
                                         </div>
                                       </div>
                                       {canBookGrandChild && (
-                                        <Link
-                                          href={`/book?service=${grandChild._id}`}
-                                          className="px-2 py-1 bg-[var(--accent-terracotta)] text-white text-xs font-semibold rounded-md hover:opacity-90 transform hover:scale-105 transition-all duration-200 flex items-center gap-1 whitespace-nowrap flex-shrink-0"
-                                        >
-                                          <FaArrowRight className="w-2.5 h-2.5" />
-                                          <span>Book</span>
-                                        </Link>
+                                        <ServiceCartControls
+                                          serviceId={grandChild._id}
+                                          serviceName={grandChild.name}
+                                          variant="child"
+                                        />
                                       )}
                                     </div>
                                   );

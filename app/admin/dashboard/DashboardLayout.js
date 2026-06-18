@@ -32,6 +32,7 @@ import ReelTab from "./ReelTab";
 import SiteSettingsTab from "./SiteSettingsTab";
 import WalletTab from "./WalletTab";
 import CustomerFeedbackTab from "./CustomerFeedbackTab";
+import AllInvoicesTab from "./AllInvoicesTab";
 import {
   FiHome,
   FiLogOut,
@@ -186,6 +187,14 @@ export default function DashboardLayout() {
   >
     <FiThumbsUp className={styles.icon} />
     Customer Feedback
+  </button>
+
+  <button
+    className={`${styles.menuItem} ${activeTab === "all-invoices" ? styles.active : ""}`}
+    onClick={() => setActiveTab("all-invoices")}
+  >
+    <FiFileText className={styles.icon} />
+    All Invoices
   </button>
 
   <button
@@ -367,6 +376,7 @@ export default function DashboardLayout() {
         {activeTab === "users" && <UsersTab />}
         {activeTab === "appointments" && <AppointmentTab />}
         {activeTab === "customer-feedback" && <CustomerFeedbackTab />}
+        {activeTab === "all-invoices" && <AllInvoicesTab />}
         {activeTab === "coupons" && <CouponTab />}
         {activeTab === "blogs" && <BlogTab />}
         {activeTab === "reels" && <ReelTab />}

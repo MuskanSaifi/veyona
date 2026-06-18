@@ -194,6 +194,13 @@ function BookPageContent() {
             const q = Math.floor(Number(quantityParam));
             if (idNorm && Number.isFinite(q)) map[idNorm] = Math.max(1, Math.min(20, q));
           }
+          const reduxQty = store.getState().bookingCart?.quantities || {};
+          for (const s of ids) {
+            const sid = serviceIdStr(s);
+            if (!sid || map[sid] != null) continue;
+            const fromRedux = reduxQty[sid];
+            if (fromRedux != null) map[sid] = Math.max(1, Math.min(20, Math.floor(Number(fromRedux))));
+          }
           return map;
         })();
 

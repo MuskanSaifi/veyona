@@ -55,6 +55,7 @@ export default function BookSection() {
   const router = useRouter();
   const dispatch = useDispatch();
   const reduxServiceIds = useSelector((state) => state.bookingCart.serviceIds) || [];
+  const reduxQuantities = useSelector((state) => state.bookingCart.quantities) || {};
   /** Latest selected category id — avoids stale closure in fetchServices after await. */
   const selectedCategoryIdRef = useRef(null);
   /** Active booking categories from admin (one tab per category — correct services per tab). */
@@ -196,7 +197,11 @@ export default function BookSection() {
           setCartQty((prev) => {
             const next = { ...(prev || {}) };
             for (const s of valid) {
-              if (s?._id && next[s._id] == null) next[s._id] = 1;
+              if (s?._id) {
+                const key = String(s._id);
+                const fromRedux = reduxQuantities[key];
+                next[key] = fromRedux != null ? Math.max(1, Math.min(20, Math.floor(Number(fromRedux)))) : (next[key] ?? 1);
+              }
             }
             // remove qty entries that are no longer in cart
             for (const k of Object.keys(next)) {
@@ -209,7 +214,7 @@ export default function BookSection() {
         }
       } catch (e) {}
     })();
-  }, [reduxServiceIds.join(",")]); // Sync when Redux ids change (e.g. returning from /book)
+  }, [reduxServiceIds.join(","), JSON.stringify(reduxQuantities)]); // Sync when Redux cart changes
 
   const getQtyForCart = (id) => {
     const raw = Number(cartQty?.[id]);
