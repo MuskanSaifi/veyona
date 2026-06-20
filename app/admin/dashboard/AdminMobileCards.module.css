@@ -1,5 +1,21 @@
 /* Shared mobile cards + view-more modal for admin tabs */
 
+.btnSpinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: adminBtnSpin 0.75s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes adminBtnSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .mobileCards {
   display: none;
 }

@@ -3,6 +3,7 @@ import connectDB from "@/lib/db";
 import Service from "@/models/Service";
 import Salon from "@/models/Salon";
 import cloudinary from "@/lib/cloudinary";
+import { uploadImageBuffer } from "@/lib/cloudinaryUpload";
 
 export async function GET(req, { params }) {
   await connectDB();
@@ -147,24 +148,17 @@ export async function PUT(req, { params }) {
         }
       }
 
-      const buffer = Buffer.from(await file.arrayBuffer());
-      const upload = await new Promise((resolve, reject) => {
-        cloudinary.uploader.upload_stream(
-          { folder: "services" },
-          (err, result) => {
-            if (err) reject(err);
-            else resolve(result);
-          }
-        ).end(buffer);
-      });
-      if (!upload?.secure_url) {
+      try {
+        const buffer = Buffer.from(await file.arrayBuffer());
+        const upload = await uploadImageBuffer(buffer, "services");
+        updateData.image = upload.secure_url;
+        updateData.public_id = upload.public_id;
+      } catch (uploadErr) {
         return NextResponse.json(
-          { message: "Image upload failed. Please try again." },
+          { message: uploadErr.message || "Image upload failed. Check Cloudinary settings on the server." },
           { status: 500 }
         );
       }
-      updateData.image = upload.secure_url;
-      updateData.public_id = upload.public_id;
     }
 
     const mongoUpdate =

@@ -3,6 +3,7 @@ import connectDB from "@/lib/db";
 import Service from "@/models/Service";
 import Salon from "@/models/Salon";
 import cloudinary from "@/lib/cloudinary";
+import { uploadImageBuffer } from "@/lib/cloudinaryUpload";
 
 export async function GET(req) {
   await connectDB();
@@ -93,19 +94,25 @@ export async function POST(req) {
     let image = "";
     let public_id = "";
 
-    if (file) {
-      const buffer = Buffer.from(await file.arrayBuffer());
-      const upload = await new Promise((resolve, reject) => {
-        cloudinary.uploader.upload_stream(
-          { folder: "services" },
-          (err, result) => {
-            if (err) reject(err);
-            resolve(result);
-          }
-        ).end(buffer);
-      });
-      image = upload.secure_url;
-      public_id = upload.public_id;
+    const hasNewImage =
+      file &&
+      file !== "null" &&
+      typeof file === "object" &&
+      typeof file.arrayBuffer === "function" &&
+      (file.size == null || file.size > 0);
+
+    if (hasNewImage) {
+      try {
+        const buffer = Buffer.from(await file.arrayBuffer());
+        const upload = await uploadImageBuffer(buffer, "services");
+        image = upload.secure_url;
+        public_id = upload.public_id;
+      } catch (uploadErr) {
+        return NextResponse.json(
+          { message: uploadErr.message || "Image upload failed. Check Cloudinary settings on the server." },
+          { status: 500 }
+        );
+      }
     }
 
     const serviceData = {

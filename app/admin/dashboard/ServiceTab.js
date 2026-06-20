@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
+import { compressImageFile, formatFileSize, parseUploadErrorResponse } from "@/lib/compressImageClient";
+import { getServiceImageSrc } from "@/lib/serviceImage";
 import * as styles from "./styles";
 import mobile from "./AdminMobileCards.module.css";
 
@@ -14,6 +16,8 @@ export default function ServiceTab() {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 20;
+  const [imageCompressing, setImageCompressing] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -28,10 +32,32 @@ export default function ServiceTab() {
     isVideoConsultation: false,
   });
 
+  const handleImageSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      setFormData((prev) => ({ ...prev, image: null }));
+      return;
+    }
+    setImageCompressing(true);
+    try {
+      const compressed = await compressImageFile(file);
+      setFormData((prev) => ({ ...prev, image: compressed }));
+      if (compressed.size < file.size) {
+        toast.success(`Image optimized: ${formatFileSize(file.size)} → ${formatFileSize(compressed.size)}`);
+      }
+    } catch (err) {
+      console.error("Image compression failed:", err);
+      setFormData((prev) => ({ ...prev, image: file }));
+      toast.error("Could not optimize image. Original file will be used — keep it under 1MB.");
+    } finally {
+      setImageCompressing(false);
+    }
+  };
+
   const fetchServices = async () => {
-    const res = await fetch("/api/service?includeChildren=true");
+    const res = await fetch("/api/admin/services", { cache: "no-store" });
     const data = await res.json();
-    setServices(data);
+    setServices(Array.isArray(data) ? data : []);
   };
 
   const fetchCategories = async () => {
@@ -117,30 +143,40 @@ export default function ServiceTab() {
     // If price/duration provided, it will be bookable leaf node (unless children added later)
     // Backend will handle removing price/duration if children are added
 
-    const data = new FormData();
-    data.append("name", formData.name);
-    data.append("description", formData.description || "");
-    if (formData.price) data.append("price", formData.price);
-    if (formData.originalPrice) data.append("originalPrice", formData.originalPrice);
-    if (formData.duration) data.append("duration", formData.duration);
-    data.append("category", formData.category);
-    if (formData.parentService) {
-      data.append("parentService", formData.parentService);
-    }
-    if (selectedCategoryType === "dentist" && formData.clinic) {
-      data.append("clinic", formData.clinic);
-    } else if (editing) {
-      data.append("clinic", "null");
-    }
-    if (formData.order) {
-      data.append("order", formData.order);
-    }
-    if (formData.image && formData.image.size > 0) {
-      data.append("image", formData.image);
-    }
-    data.append("isVideoConsultation", formData.isVideoConsultation ? "true" : "false");
+    setSaving(true);
 
     try {
+      const data = new FormData();
+      data.append("name", formData.name);
+      data.append("description", formData.description || "");
+      if (formData.price) data.append("price", formData.price);
+      if (formData.originalPrice) data.append("originalPrice", formData.originalPrice);
+      if (formData.duration) data.append("duration", formData.duration);
+      data.append("category", formData.category);
+      if (formData.parentService) {
+        data.append("parentService", formData.parentService);
+      }
+      if (selectedCategoryType === "dentist" && formData.clinic) {
+        data.append("clinic", formData.clinic);
+      } else if (editing) {
+        data.append("clinic", "null");
+      }
+      if (formData.order) {
+        data.append("order", formData.order);
+      }
+      if (formData.image && formData.image.size > 0) {
+        let imageFile = formData.image;
+        try {
+          imageFile = await compressImageFile(formData.image);
+        } catch (err) {
+          console.error("Image compression failed:", err);
+          toast.error("Could not process image. Try a JPG/PNG under 5MB.");
+          return;
+        }
+        data.append("image", imageFile);
+      }
+      data.append("isVideoConsultation", formData.isVideoConsultation ? "true" : "false");
+
       let response;
       if (editing) {
         response = await fetch(`/api/service/${editing._id}`, {
@@ -163,11 +199,20 @@ export default function ServiceTab() {
       }
 
       if (!response.ok) {
-        toast.error(result.message || "Error saving service");
+        toast.error(parseUploadErrorResponse(text, response.status));
         return;
       }
 
       toast.success(editing ? "Service updated successfully" : "Service added successfully");
+      if (result?._id) {
+        setServices((prev) => {
+          const exists = prev.some((s) => s._id === result._id);
+          if (exists) {
+            return prev.map((s) => (s._id === result._id ? { ...s, ...result } : s));
+          }
+          return [result, ...prev];
+        });
+      }
       fetchServices();
       setShowModal(false);
       setEditing(null);
@@ -175,6 +220,8 @@ export default function ServiceTab() {
     } catch (error) {
       console.error("Error saving service:", error);
       toast.error("Error saving service. Please try again.");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -393,27 +440,7 @@ export default function ServiceTab() {
               {paginatedServices.map((service) => (
                 <tr key={service._id}>
                   <td style={styles.table.td}>
-                    {service.image ? (
-                      <img src={service.image} alt={service.name} style={styles.table.image} />
-                    ) : (
-                      <div
-                        style={{
-                          width: "240px",
-                          height: "100px",
-                          borderRadius: "14px",
-                          background: "linear-gradient(135deg, var(--accent-terracotta) 0%, var(--accent-coral) 100%)",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          color: "white",
-                          fontSize: "14px",
-                          fontWeight: "bold",
-                          margin: "0 auto",
-                        }}
-                      >
-                        No Image
-                      </div>
-                    )}
+                    <ServiceTableImage service={service} />
                   </td>
                   <td style={styles.table.td}>
                     <p style={styles.table.text}>{service.name}</p>
@@ -868,27 +895,74 @@ export default function ServiceTab() {
               </label>
               <input
                 type="file"
-                accept="image/*"
-                onChange={(e) => setFormData({ ...formData, image: e.target.files[0] })}
+                accept="image/jpeg,image/png,image/webp,image/*"
+                onChange={handleImageSelect}
+                disabled={imageCompressing}
                 style={styles.inputStyle}
               />
-              {editing?.image && (
-                <p style={{ fontSize: "13px", color: "#64748b", marginTop: "-12px", marginBottom: "16px" }}>
-                  Current image will be replaced
+              {imageCompressing && (
+                <p style={{ fontSize: 13, color: "#64748b", marginTop: -12, marginBottom: 16 }}>
+                  Optimizing image…
+                </p>
+              )}
+              {formData.image && !imageCompressing && (
+                <p style={{ fontSize: 13, color: "#64748b", marginTop: -12, marginBottom: 16 }}>
+                  Selected: {formData.image.name} ({formatFileSize(formData.image.size)})
+                </p>
+              )}
+              {editing?.image && getServiceImageSrc(editing) && !formData.image && (
+                <div style={{ marginBottom: 16 }}>
+                  <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 8px" }}>Current image</p>
+                  <img
+                    src={getServiceImageSrc(editing)}
+                    alt={editing.name}
+                    style={{ ...styles.table.image, width: 180, height: 80 }}
+                  />
+                </div>
+              )}
+              {editing?.image && formData.image && (
+                <p style={{ fontSize: 13, color: "#64748b", marginTop: -12, marginBottom: 16 }}>
+                  New image will replace the current one
                 </p>
               )}
               <div style={styles.modalButtons}>
-                <button type="submit" style={styles.submitButton}>
-                  {editing ? "Update" : "Add"}
+                <button
+                  type="submit"
+                  disabled={imageCompressing || saving}
+                  style={{
+                    ...styles.submitButton,
+                    opacity: imageCompressing || saving ? 0.75 : 1,
+                    cursor: imageCompressing || saving ? "not-allowed" : "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    minWidth: 120,
+                  }}
+                >
+                  {saving && <span className={mobile.btnSpinner} aria-hidden="true" />}
+                  {saving
+                    ? editing
+                      ? "Updating..."
+                      : "Adding..."
+                    : editing
+                      ? "Update"
+                      : "Add"}
                 </button>
                 <button
                   type="button"
+                  disabled={saving}
                   onClick={() => {
+                    if (saving) return;
                     setShowModal(false);
                     setEditing(null);
                     setFormData({ name: "", description: "", price: "", originalPrice: "", duration: "", category: "", parentService: "", clinic: "", order: "", image: null, isVideoConsultation: false });
                   }}
-                  style={styles.cancelButton}
+                  style={{
+                    ...styles.cancelButton,
+                    opacity: saving ? 0.6 : 1,
+                    cursor: saving ? "not-allowed" : "pointer",
+                  }}
                 >
                   Cancel
                 </button>
@@ -898,5 +972,47 @@ export default function ServiceTab() {
         </div>
       )}
     </div>
+  );
+}
+
+function ServiceTableImage({ service }) {
+  const src = getServiceImageSrc(service);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
+
+  if (!src || failed) {
+    return (
+      <div
+        style={{
+          width: "240px",
+          height: "100px",
+          borderRadius: "14px",
+          background: "linear-gradient(135deg, var(--accent-terracotta) 0%, var(--accent-coral) 100%)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "white",
+          fontSize: "14px",
+          fontWeight: "bold",
+          margin: "0 auto",
+        }}
+      >
+        No Image
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={service.name}
+      style={styles.table.image}
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+    />
   );
 }
