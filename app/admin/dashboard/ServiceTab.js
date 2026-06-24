@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { compressImageFile, formatFileSize, parseUploadErrorResponse } from "@/lib/compressImageClient";
 import { getServiceImageSrc } from "@/lib/serviceImage";
+import { getParentSelectOptions, MAX_SERVICE_TREE_DEPTH } from "@/lib/serviceTree";
 import * as styles from "./styles";
 import mobile from "./AdminMobileCards.module.css";
 
@@ -672,106 +673,25 @@ export default function ServiceTab() {
               <select
                 value={formData.parentService}
                 onChange={(e) => {
-                  const parentSelected = e.target.value;
-                  // Don't auto-clear price/duration when parent is selected
-                  // Child services CAN be bookable if they are leaf nodes
-                  // Price/duration will only be removed if children are added later
-                  setFormData({ 
-                    ...formData, 
-                    parentService: parentSelected
+                  setFormData({
+                    ...formData,
+                    parentService: e.target.value,
                   });
                 }}
                 style={styles.selectStyle}
                 disabled={!formData.category}
               >
-                <option value="">Select Parent Service (Optional - for nested services)</option>
-                {services
-                  .filter((s) => {
-                    // Same category
-                    const sameCategory = s.category && 
-                      (s.category._id === formData.category || s.category === formData.category);
-                    
-                    if (!sameCategory) return false;
-                    
-                    // Not the current service being edited
-                    const notSelf = !editing || s._id !== editing._id;
-                    if (!notSelf) return false;
-                    
-                    // Prevent circular reference: can't select a service that has this service as its parent (directly or indirectly)
-                    if (editing) {
-                      let currentServiceId = editing._id;
-                      let checkParent = s.parentService?._id || s.parentService;
-                      
-                      // Check all ancestors to prevent circular reference
-                      while (checkParent) {
-                        if (checkParent === currentServiceId) {
-                          return false; // Circular reference found
-                        }
-                        const parentService = services.find(ps => {
-                          const psId = typeof ps._id === "string" ? ps._id : ps._id?.toString();
-                          return psId === (typeof checkParent === "string" ? checkParent : checkParent?.toString());
-                        });
-                        if (!parentService || !parentService.parentService) break;
-                        checkParent = parentService.parentService?._id || parentService.parentService;
-                      }
-                      
-                      // Also check if current service is already a parent of this service
-                      const currentServiceChildren = services.filter(child => {
-                        const childParentId = typeof child.parentService === "string" 
-                          ? child.parentService 
-                          : child.parentService?._id;
-                        return childParentId === currentServiceId;
-                      });
-                      
-                      if (currentServiceChildren.some(child => {
-                        const childId = typeof child._id === "string" ? child._id : child._id?.toString();
-                        const sId = typeof s._id === "string" ? s._id : s._id?.toString();
-                        return childId === sId;
-                      })) {
-                        return false; // Can't select a child as parent
-                      }
-                    }
-                    
-                    // Allow all services (grouping or leaf nodes) to be selected as parent
-                    // Backend will handle removing price/duration from selected parent
-                    return true;
-                  })
-                  .map((parent) => {
-                    // Check if this potential parent has children
-                    const hasChildren = services.some(child => {
-                      const childParentId = typeof child.parentService === "string" 
-                        ? child.parentService 
-                        : child.parentService?._id;
-                      const parentId = typeof parent._id === "string" ? parent._id : parent._id?.toString();
-                      return childParentId === parentId && child._id !== (editing?._id || "");
-                    });
-                    
-                    const isLeafNode = parent.price && parent.duration && !hasChildren;
-                    const isGrouping = !parent.price && !parent.duration;
-                    const hasChildrenAndPrice = hasChildren && parent.price && parent.duration;
-                    
-                    let label = parent.name;
-                    if (parent.parentService) {
-                      label += " (Sub-parent";
-                      if (isLeafNode) label += " - leaf node, price/duration will be removed)";
-                      else if (hasChildren) label += " - has children)";
-                      else label += ")";
-                    } else if (isGrouping) {
-                      label += " (Parent - grouping service)";
-                    } else if (isLeafNode) {
-                      label += " (Leaf node - price/duration will be removed when selected as parent)";
-                    } else if (hasChildrenAndPrice) {
-                      label += " (Has children but also has price - will be fixed)";
-                    } else {
-                      label += " (Parent)";
-                    }
-                    
-                    return (
-                      <option key={parent._id} value={parent._id}>
-                        {label}
-                      </option>
-                    );
-                  })}
+                <option value="">
+                  Select Parent Service (optional — tree up to {MAX_SERVICE_TREE_DEPTH + 1} levels)
+                </option>
+                {getParentSelectOptions(services, {
+                  categoryId: formData.category,
+                  editingId: editing?._id,
+                }).map((opt) => (
+                  <option key={opt.id} value={opt.id}>
+                    {opt.label}
+                  </option>
+                ))}
               </select>
               {(() => {
                 // Check if current service (if editing) has children

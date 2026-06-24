@@ -4,6 +4,7 @@ import Service from "@/models/Service";
 import Salon from "@/models/Salon";
 import cloudinary from "@/lib/cloudinary";
 import { uploadImageBuffer } from "@/lib/cloudinaryUpload";
+import { validateParentServiceDepth } from "@/lib/serviceTree";
 
 export async function GET(req) {
   await connectDB();
@@ -135,6 +136,10 @@ export async function POST(req) {
     }
     
     if (parentService && parentService !== "null") {
+      const depthCheck = await validateParentServiceDepth(Service, parentService);
+      if (!depthCheck.ok) {
+        return NextResponse.json({ message: depthCheck.message }, { status: 400 });
+      }
       serviceData.parentService = parentService;
     }
     if (clinic && clinic !== "null" && clinic !== "") {

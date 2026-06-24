@@ -28,6 +28,8 @@ export async function GET(req) {
   if (employee) filter.employee = employee;
   if (type === "credit" || type === "debit") filter.type = type;
   if (status) filter.status = status;
+  const category = searchParams.get("category");
+  if (category) filter.category = category;
 
   const transactions = await WalletTransaction.find(filter)
     .populate("employee", "name email phone")

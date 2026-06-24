@@ -21,6 +21,12 @@ import {
 import { useRouter } from "next/navigation";
 import styles from "./header.module.css";
 import HappyCustomersBar from "./HappyCustomersBar";
+import {
+  buildChildrenMap,
+  collectBookableLeaves,
+  getServicePathLabel,
+  isBookableLeafService,
+} from "@/lib/serviceTree";
 
 // Default placeholder image
 const DEFAULT_SERVICE_IMAGE = "/DEFAULT_SERVICE_IMAGE.webp";
@@ -189,10 +195,10 @@ export default function Header() {
     const lowerQuery = query.toLowerCase().trim();
     
     // Search services - only bookable services (with price and duration)
+    const childrenMap = buildChildrenMap(services);
     const matchedServices = services
       .filter((service) => {
-        const isBookableService = service.price && service.duration;
-        if (!isBookableService || !service.active) return false;
+        if (!isBookableLeafService(service, childrenMap) || !service.active) return false;
         
         const nameMatch = service.name?.toLowerCase().includes(lowerQuery);
         const descMatch = service.description?.toLowerCase().includes(lowerQuery);
@@ -310,87 +316,55 @@ export default function Header() {
     }
   };
 
-  // Check if service is bookable (has price and duration - these are the only bookable services)
-  const isBookable = (service) => {
-    // Only services with price and duration are bookable
-    // Parent services (without price/duration) are not bookable
-    return service.price && service.duration;
-  };
-
-  // Check if product is buyable (has price)
+  // Organize services hierarchically: Category → root services → bookable leaves (any depth)
   const isBuyable = (product) => {
     return product.price && product.price > 0;
   };
 
-  // Organize services hierarchically: Category → Parent Service → Bookable Services
+  // Organize services hierarchically: Category → root services → bookable leaves (any depth)
   const organizeServicesHierarchy = () => {
     if (!categories.length || !services.length) return [];
-
-    // Organize services by parent-child relationship
-    const organizeByParent = (serviceList) => {
-      const parentServices = serviceList.filter((s) => !s.parentService);
-      const childServicesMap = new Map();
-
-      serviceList.forEach((service) => {
-        if (service.parentService) {
-          const parentId =
-            typeof service.parentService === "string"
-              ? service.parentService
-              : service.parentService._id;
-
-          if (!childServicesMap.has(parentId)) {
-            childServicesMap.set(parentId, []);
-          }
-          childServicesMap.get(parentId).push(service);
-        }
-      });
-
-      return { parentServices, childServicesMap };
-    };
 
     return categories
       .filter((category) => category.active)
       .map((category) => {
-        // Get all services for this category
         const categoryServices = services.filter(
-          (service) => 
+          (service) =>
             (typeof service.category === "string" &&
               service.category === category._id) ||
-            (service.category?._id === category._id) ||
-            (service.category?._id?.toString() === category._id?.toString())
+            service.category?._id === category._id ||
+            service.category?._id?.toString() === category._id?.toString()
         );
 
         if (!categoryServices.length) return null;
 
-        const { parentServices, childServicesMap } =
-          organizeByParent(categoryServices);
+        const childrenMap = buildChildrenMap(categoryServices);
+        const rootServices = categoryServices.filter((s) => !s.parentService);
 
-        // Get parent service IDs that have bookable children
-        const parentIdsWithChildren = new Set(
-          parentServices
-            .filter((parent) => {
-              const children = (childServicesMap.get(parent._id) || []).filter(isBookable);
-              return children.length > 0;
-            })
-            .map((p) => p._id.toString())
-        );
+        const parentServices = rootServices
+          .map((root) => {
+            const leaves = collectBookableLeaves(root._id, childrenMap).map((leaf) => ({
+              ...leaf,
+              pathLabel: getServicePathLabel(categoryServices, leaf._id),
+            }));
+            return { ...root, children: leaves };
+          })
+          .filter((root) => root.children.length > 0);
 
-        const processedParentServices = parentServices
-          .map((parent) => ({
-            ...parent,
-            children: (childServicesMap.get(parent._id) || []).filter(isBookable),
-          }))
-          .filter((parent) => parent.children.length > 0);
+        const rootIdsWithLeaves = new Set(parentServices.map((p) => p._id.toString()));
 
-        // Direct bookable services: no parent, bookable, AND not already shown as parent
         const directBookableServices = categoryServices.filter((s) => {
           const serviceId = s._id.toString();
-          return !s.parentService && isBookable(s) && !parentIdsWithChildren.has(serviceId);
+          return (
+            !s.parentService &&
+            isBookableLeafService(s, childrenMap) &&
+            !rootIdsWithLeaves.has(serviceId)
+          );
         });
 
         return {
           category,
-          parentServices: processedParentServices,
+          parentServices,
           directBookableServices,
         };
       })
@@ -680,7 +654,9 @@ export default function Header() {
                             </div>
                             <div className={styles.serviceInfo}>
                               <span className={styles.serviceName}>
-                                {child.name}
+                                {child.pathLabel && child.pathLabel !== child.name
+                                  ? child.pathLabel
+                                  : child.name}
                               </span>
                             </div>
                           </Link>
@@ -1103,7 +1079,9 @@ export default function Header() {
                               setShowMobileMenu(false);
                             }}
                           >
-                            {child.name}
+                            {child.pathLabel && child.pathLabel !== child.name
+                              ? child.pathLabel
+                              : child.name}
                           </Link>
                         ))}
                       </div>

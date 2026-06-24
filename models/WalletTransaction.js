@@ -20,6 +20,8 @@ const WALLET_CATEGORIES = [
   "withdrawal",
   "adjustment",
   "refund",
+  "employee_deposit",
+  "product_purchase",
   "other",
 ];
 
@@ -59,8 +61,15 @@ const walletTransactionSchema = new mongoose.Schema(
     referenceType: { type: String, trim: true, default: "" },
     referenceId: { type: mongoose.Schema.Types.ObjectId },
 
+    razorpayOrderId: { type: String, trim: true, index: true },
+    razorpayPaymentId: { type: String, trim: true },
+
     // Admin who created this entry
-    createdByRole: { type: String, enum: ["admin", "system"], default: "admin" },
+    createdByRole: {
+      type: String,
+      enum: ["admin", "system", "employee"],
+      default: "admin",
+    },
     createdBy: { type: mongoose.Schema.Types.ObjectId },
   },
   { timestamps: true, collection: "wallet_transactions" }

@@ -46,6 +46,12 @@ const serviceVisitSchema = new mongoose.Schema(
 
     feedbackSentAt: { type: Date },
     feedbackSubmittedAt: { type: Date },
+    /** Set when visit was created from an appointment end-service flow */
+    appointment: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Appointment",
+      sparse: true,
+    },
   },
   { timestamps: true, collection: "service_visits" }
 );

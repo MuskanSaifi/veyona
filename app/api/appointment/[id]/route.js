@@ -7,6 +7,12 @@ import { saveAppointmentDoc } from "@/lib/saveAppointmentDoc";
 import { sendWhatsAppTemplate } from "@/lib/whatsapp";
 import { sendPaidInvoiceEmailIfNeeded } from "@/lib/billingEmail";
 import { sendServiceOtpWhatsApp, sendFeedbackRequestWhatsApp } from "@/lib/serviceWhatsapp";
+import {
+  applyRescheduleServicesAndPricing,
+  buildServicesPayloadFromLineItems,
+  sendRescheduleWhatsAppNotifications,
+} from "@/lib/appointmentReschedule";
+import { ensureServiceVisitForAppointment } from "@/lib/appointmentFeedbackVisit";
 import jwt from "jsonwebtoken";
 
 const SERVICE_OTP_TTL_MINUTES = 5;
@@ -183,12 +189,38 @@ export async function PUT(req, { params }) {
           return NextResponse.json({ message: "Start service before recording end time" }, { status: 400 });
         }
         appointment.serviceEndedAt = new Date();
+        await saveAppointmentDoc(appointment);
+
+        let feedbackWhatsapp = { success: false, message: "Skipped" };
         const customer = await Customer.findById(appointment.customer);
         if (customer?.phone) {
-          sendFeedbackRequestWhatsApp(customer.phone, String(appointment._id)).catch((err) =>
-            console.error("WhatsApp service feedback failed:", err)
-          );
+          const visit = await ensureServiceVisitForAppointment(appointment);
+          if (visit) {
+            feedbackWhatsapp = await sendFeedbackRequestWhatsApp(
+              customer.phone,
+              String(visit._id)
+            );
+            if (feedbackWhatsapp.success) {
+              visit.feedbackSentAt = new Date();
+              await visit.save();
+            }
+          } else {
+            feedbackWhatsapp = {
+              success: false,
+              message: "Could not create service visit for feedback",
+            };
+          }
+        } else {
+          feedbackWhatsapp = { success: false, message: "Customer phone not found" };
         }
+
+        const tracked = await Appointment.findById(id)
+          .populate("customer")
+          .populate("salon")
+          .populate("employee")
+          .populate("service");
+        const payload = tracked.toObject ? tracked.toObject() : tracked;
+        return NextResponse.json({ ...payload, feedbackWhatsapp });
       }
       await saveAppointmentDoc(appointment);
       const tracked = await Appointment.findById(id)
@@ -197,6 +229,90 @@ export async function PUT(req, { params }) {
         .populate("employee")
         .populate("service");
       return NextResponse.json(tracked);
+    }
+
+    /** Admin: reschedule date, time, services; notify customer + employee on WhatsApp */
+    if (action === "reschedule") {
+      if (auth.role !== "admin") {
+        return NextResponse.json({ message: "Not allowed" }, { status: 403 });
+      }
+      if (["cancelled", "completed"].includes(appointment.status)) {
+        return NextResponse.json(
+          { message: "Cannot reschedule cancelled or completed appointments" },
+          { status: 400 }
+        );
+      }
+
+      const rescheduleDate = body.date;
+      const rescheduleTime = body.time;
+      const servicesLineItems = body.services;
+      const notifyUser = body.notifyUser !== false;
+      const notifyEmployee = body.notifyEmployee !== false;
+
+      if (!rescheduleDate || !rescheduleTime) {
+        return NextResponse.json({ message: "Date and time are required" }, { status: 400 });
+      }
+
+      const dateD = new Date(rescheduleDate);
+      if (Number.isNaN(dateD.getTime())) {
+        return NextResponse.json({ message: "Invalid date" }, { status: 400 });
+      }
+
+      const timeNorm = String(rescheduleTime).trim();
+      if (!/^\d{1,2}:\d{2}$/.test(timeNorm)) {
+        return NextResponse.json({ message: "Invalid time (use HH:MM)" }, { status: 400 });
+      }
+
+      const servicesPayload = await buildServicesPayloadFromLineItems(servicesLineItems);
+      applyRescheduleServicesAndPricing(appointment, servicesPayload);
+
+      appointment.date = dateD;
+      appointment.time = timeNorm;
+
+      if (employeeFromBody) {
+        if (!mongoose.Types.ObjectId.isValid(employeeFromBody)) {
+          return NextResponse.json({ message: "Invalid employee id" }, { status: 400 });
+        }
+        appointment.employee = employeeFromBody;
+      }
+
+      if (notes !== undefined) {
+        appointment.notes = notes;
+      }
+
+      const empId = appointment.employee?.toString?.();
+      if (empId) {
+        const conflict = await Appointment.findOne({
+          _id: { $ne: appointment._id },
+          employee: empId,
+          date: dateD,
+          time: timeNorm,
+          $or: [{ status: "confirmed" }, { status: "pending" }],
+        });
+        if (conflict) {
+          return NextResponse.json(
+            { message: "Selected employee is already booked at this date and time" },
+            { status: 400 }
+          );
+        }
+      }
+
+      recomputePayment(appointment);
+      await saveAppointmentDoc(appointment);
+
+      const updated = await Appointment.findById(id)
+        .populate("customer")
+        .populate("salon")
+        .populate("employee")
+        .populate("service");
+
+      let rescheduleWhatsapp = null;
+      if (notifyUser || notifyEmployee) {
+        rescheduleWhatsapp = await sendRescheduleWhatsAppNotifications(updated);
+      }
+
+      const payload = updated.toObject ? updated.toObject() : updated;
+      return NextResponse.json({ ...payload, rescheduleWhatsapp });
     }
 
     const wasConfirmed = appointment.status === "confirmed";

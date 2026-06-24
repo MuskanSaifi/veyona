@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
+import RescheduleModal from "./RescheduleModal";
 import * as styles from "./styles";
 import cardStyles from "./AppointmentTab.module.css";
 
@@ -50,6 +51,7 @@ export default function AppointmentTab() {
   const [confirmEmployeeId, setConfirmEmployeeId] = useState("");
   const [confirmEmpList, setConfirmEmpList] = useState([]);
   const [confirmEmpLoading, setConfirmEmpLoading] = useState(false);
+  const [rescheduleApt, setRescheduleApt] = useState(null);
 
   const fetchAppointments = async () => {
     const res = await fetch("/api/appointment", fetchOpts);
@@ -208,6 +210,16 @@ export default function AppointmentTab() {
     toast.success("Refund marked as processed");
     fetchAppointments();
     onSuccess?.();
+  };
+
+  const canRescheduleApt = (apt) => {
+    const s = apt?.status || "pending";
+    return s !== "cancelled" && s !== "completed";
+  };
+
+  const openReschedule = (apt) => {
+    setViewMoreApt(null);
+    setRescheduleApt(apt);
   };
 
   const handleDelete = async (id) => {
@@ -874,6 +886,18 @@ export default function AppointmentTab() {
                         >
                           Add Cash
                         </button>
+                        {canRescheduleApt(apt) && (
+                          <button
+                            onClick={() => openReschedule(apt)}
+                            style={{
+                              ...styles.table.btn,
+                              background: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
+                              minWidth: "110px",
+                            }}
+                          >
+                            Reschedule
+                          </button>
+                        )}
                         <button
                           onClick={() => handleDelete(apt._id)}
                           style={{
@@ -1168,6 +1192,16 @@ export default function AppointmentTab() {
                         >
                           Add Cash
                         </button>
+                        {canRescheduleApt(apt) && (
+                          <button
+                            type="button"
+                            className={cardStyles.addCashModalBtn}
+                            style={{ background: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)" }}
+                            onClick={() => openReschedule(apt)}
+                          >
+                            Reschedule
+                          </button>
+                        )}
                         <button
                           type="button"
                           className={cardStyles.deleteModalBtn}
@@ -1315,6 +1349,14 @@ export default function AppointmentTab() {
               </div>
             </div>
           </div>
+        )}
+
+        {rescheduleApt && (
+          <RescheduleModal
+            appointment={rescheduleApt}
+            onClose={() => setRescheduleApt(null)}
+            onSuccess={() => fetchAppointments()}
+          />
         )}
 
         </>

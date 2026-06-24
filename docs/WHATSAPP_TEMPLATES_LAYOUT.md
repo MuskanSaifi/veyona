@@ -119,12 +119,80 @@ Please check your employee dashboard for complete details.
 
 ---
 
+## 5. Appointment rescheduled (Customer)
+
+**When:** Admin reschedules from Appointments dashboard → customer gets WhatsApp.
+
+| Field | Value |
+|-------|--------|
+| **Template name (API)** | `transactional_user_appointment_rescheduled` |
+| **Category** | Utility |
+| **Language** | English |
+
+**Body:**
+```
+Your Veyona appointment has been rescheduled. 📅
+Service: {{1}}
+New date: {{2}}
+New time: {{3}}
+
+If you have any questions, please contact us.
+```
+
+**Placeholders:**
+
+| Placeholder | Value from app |
+|-------------|-----------------|
+| {{1}} | Service name(s), e.g. `Facial x2, Cleanup` |
+| {{2}} | New date, e.g. `Thu, 18 Jun, 2026` |
+| {{3}} | New time, e.g. `2:30 PM` |
+
+**.env:** `INTERAKT_TEMPLATE_USER_RESCHEDULE=transactional_user_appointment_rescheduled`
+
+---
+
+## 6. Appointment rescheduled (Employee)
+
+**When:** Admin reschedules and an employee is assigned → employee gets WhatsApp.
+
+| Field | Value |
+|-------|--------|
+| **Template name (API)** | `transactional_employee_appointment_rescheduled` |
+| **Category** | Utility |
+| **Language** | English |
+
+**Body:**
+```
+Your Veyona appointment has been rescheduled. 📅
+Client: {{1}}
+Service: {{2}}
+New date: {{3}}
+New time: {{4}}
+
+Please check your employee dashboard for details.
+```
+
+**Placeholders:**
+
+| Placeholder | Value from app |
+|-------------|-----------------|
+| {{1}} | Customer name |
+| {{2}} | Service name(s) |
+| {{3}} | New date |
+| {{4}} | New time |
+
+**.env:** `INTERAKT_TEMPLATE_EMPLOYEE_RESCHEDULE=transactional_employee_appointment_rescheduled`
+
+---
+
 ## Quick reference: App → Template mapping
 
 | Event | Template name (use in .env / code) | Body params order |
 |-------|-------------------------------------|-------------------|
 | Admin confirms booking | `transactional_booking_confirmation` | [ service + date, time ] |
 | User books (admin alert) | `transactional_admin_new_appointment` | [ bookingId, customerName ] |
+| Admin reschedules (user) | `transactional_user_appointment_rescheduled` | [ services, date, time ] |
+| Admin reschedules (employee) | `transactional_employee_appointment_rescheduled` | [ client, services, date, time ] |
 | Reminder | `transactional_reminder_notification` | [ date, time ] |
 | Employee assign | `transactional_employee_assign` | [ customerName, date, time ] |
 

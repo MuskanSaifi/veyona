@@ -11,6 +11,8 @@ const CATEGORY_OPTIONS = [
   { value: "penalty", label: "Penalty" },
   { value: "withdrawal", label: "Withdrawal" },
   { value: "adjustment", label: "Adjustment" },
+  { value: "employee_deposit", label: "Cash deposit (employee)" },
+  { value: "product_purchase", label: "Product purchase" },
   { value: "refund", label: "Refund" },
   { value: "other", label: "Other" },
 ];
@@ -40,7 +42,11 @@ export default function WalletTab() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const [selectedEmployee, setSelectedEmployee] = useState(null); // employee row
+  const [pendingPurchases, setPendingPurchases] = useState([]);
+  const [pendingLoading, setPendingLoading] = useState(true);
+  const [actionId, setActionId] = useState(null);
+
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [employeeTxns, setEmployeeTxns] = useState([]);
   const [employeeLoading, setEmployeeLoading] = useState(false);
 
@@ -48,10 +54,26 @@ export default function WalletTab() {
   const [form, setForm] = useState({
     type: "credit",
     amount: "",
-    category: "adjustment",
+    category: "employee_deposit",
     description: "",
   });
   const [saving, setSaving] = useState(false);
+
+  const [purchaseRecords, setPurchaseRecords] = useState([]);
+  const [purchaseSummary, setPurchaseSummary] = useState(null);
+  const [purchaseLoading, setPurchaseLoading] = useState(true);
+  const [purchaseEmployee, setPurchaseEmployee] = useState("");
+  const [purchaseFrom, setPurchaseFrom] = useState("");
+  const [purchaseTo, setPurchaseTo] = useState("");
+  const [purchaseMonth, setPurchaseMonth] = useState("");
+  const [purchaseStatus, setPurchaseStatus] = useState("all");
+
+  const [modalPurchaseFrom, setModalPurchaseFrom] = useState("");
+  const [modalPurchaseTo, setModalPurchaseTo] = useState("");
+  const [modalPurchaseMonth, setModalPurchaseMonth] = useState("");
+  const [modalPurchases, setModalPurchases] = useState([]);
+  const [modalPurchaseSummary, setModalPurchaseSummary] = useState(null);
+  const [modalPurchaseLoading, setModalPurchaseLoading] = useState(false);
 
   const loadSummary = async () => {
     setLoading(true);
@@ -64,9 +86,83 @@ export default function WalletTab() {
     }
   };
 
+  const loadPendingPurchases = async () => {
+    setPendingLoading(true);
+    try {
+      const res = await fetch(
+        "/api/admin/wallet/transactions?status=pending&category=product_purchase&limit=100",
+        { cache: "no-store" }
+      );
+      const data = await res.json();
+      setPendingPurchases(data.transactions || []);
+    } finally {
+      setPendingLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadSummary();
+    loadPendingPurchases();
+    loadPurchaseRecords({ employee: "", from: "", to: "", month: "", status: "all" });
   }, []);
+
+  const loadPurchaseRecords = async (overrides = {}) => {
+    setPurchaseLoading(true);
+    try {
+      const params = new URLSearchParams();
+      const emp =
+        overrides.employee !== undefined ? overrides.employee : purchaseEmployee;
+      const from = overrides.from !== undefined ? overrides.from : purchaseFrom;
+      const to = overrides.to !== undefined ? overrides.to : purchaseTo;
+      const month = overrides.month !== undefined ? overrides.month : purchaseMonth;
+      const status = overrides.status !== undefined ? overrides.status : purchaseStatus;
+
+      if (emp) params.set("employee", emp);
+      if (month) params.set("month", month);
+      else {
+        if (from) params.set("from", from);
+        if (to) params.set("to", to);
+      }
+      if (status && status !== "all") params.set("status", status);
+
+      const res = await fetch(`/api/admin/wallet/purchases?${params.toString()}`, {
+        cache: "no-store",
+      });
+      const data = await res.json();
+      setPurchaseRecords(data.purchases || []);
+      setPurchaseSummary(data.summary || null);
+    } finally {
+      setPurchaseLoading(false);
+    }
+  };
+
+  const loadModalPurchases = async (employeeId, overrides = {}) => {
+    if (!employeeId) return;
+    setModalPurchaseLoading(true);
+    try {
+      const params = new URLSearchParams({ employee: employeeId });
+      const from =
+        overrides.from !== undefined ? overrides.from : modalPurchaseFrom;
+      const to = overrides.to !== undefined ? overrides.to : modalPurchaseTo;
+      const month =
+        overrides.month !== undefined ? overrides.month : modalPurchaseMonth;
+
+      if (month) params.set("month", month);
+      else {
+        if (from) params.set("from", from);
+        if (to) params.set("to", to);
+      }
+
+      const res = await fetch(`/api/admin/wallet/purchases?${params.toString()}`, {
+        cache: "no-store",
+      });
+      const data = await res.json();
+      setModalPurchases(data.purchases || []);
+      setModalPurchaseSummary(data.summary || null);
+    } finally {
+      setModalPurchaseLoading(false);
+    }
+  };
 
   const loadEmployeeTxns = async (employeeId) => {
     setEmployeeLoading(true);
@@ -84,12 +180,18 @@ export default function WalletTab() {
 
   const openEmployee = (row) => {
     setSelectedEmployee(row);
+    setModalPurchaseFrom("");
+    setModalPurchaseTo("");
+    setModalPurchaseMonth("");
     loadEmployeeTxns(row.employee.id);
+    loadModalPurchases(row.employee.id, { from: "", to: "", month: "" });
   };
 
   const closeEmployee = () => {
     setSelectedEmployee(null);
     setEmployeeTxns([]);
+    setModalPurchases([]);
+    setModalPurchaseSummary(null);
   };
 
   const filteredSummary = useMemo(() => {
@@ -114,6 +216,40 @@ export default function WalletTab() {
       { balance: 0, credit: 0, debit: 0 }
     );
   }, [summary]);
+
+  const handlePurchaseAction = async (txnId, action) => {
+    const label = action === "approve" ? "deduct this amount from the wallet" : "reject this purchase";
+    if (!confirm(`Are you sure you want to ${label}?`)) return;
+
+    setActionId(txnId);
+    try {
+      const res = await fetch(`/api/admin/wallet/transactions/${txnId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.message || "Action failed");
+        return;
+      }
+      await Promise.all([loadPendingPurchases(), loadSummary(), loadPurchaseRecords()]);
+      if (selectedEmployee) {
+        await loadEmployeeTxns(selectedEmployee.employee.id);
+        await loadModalPurchases(selectedEmployee.employee.id);
+        const refreshed = await fetch("/api/admin/wallet/summary", { cache: "no-store" });
+        const list = await refreshed.json();
+        const found = list.find(
+          (r) => String(r.employee.id) === String(selectedEmployee.employee.id)
+        );
+        if (found) setSelectedEmployee(found);
+      }
+    } catch {
+      alert("Network error");
+    } finally {
+      setActionId(null);
+    }
+  };
 
   const handleAddTransaction = async (e) => {
     e.preventDefault();
@@ -142,7 +278,7 @@ export default function WalletTab() {
         return;
       }
       setShowAddModal(false);
-      setForm({ type: "credit", amount: "", category: "adjustment", description: "" });
+      setForm({ type: "credit", amount: "", category: "employee_deposit", description: "" });
       await Promise.all([
         loadSummary(),
         loadEmployeeTxns(selectedEmployee.employee.id),
@@ -180,6 +316,318 @@ export default function WalletTab() {
         <StatCard label="Total credited" value={formatCurrency(totals.credit)} color="#16a34a" />
         <StatCard label="Total debited" value={formatCurrency(totals.debit)} color="#dc2626" />
         <StatCard label="Employees" value={summary.length} color="#0f172a" />
+      </div>
+
+      {/* Pending product purchases */}
+      <div
+        style={{
+          background: "#fffbeb",
+          border: "1px solid #fcd34d",
+          borderRadius: 14,
+          padding: "16px 20px",
+          marginBottom: 24,
+        }}
+      >
+        <h3 style={{ margin: "0 0 12px", fontSize: 16, color: "#92400e", fontWeight: 700 }}>
+          Pending product purchases
+        </h3>
+        {pendingLoading ? (
+          <div style={{ color: "#b45309", fontSize: 14 }}>Loading…</div>
+        ) : pendingPurchases.length === 0 ? (
+          <div style={{ color: "#a16207", fontSize: 14 }}>No pending purchases.</div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid #fde68a" }}>
+                  <th style={pendingTh}>Employee</th>
+                  <th style={pendingTh}>Product</th>
+                  <th style={{ ...pendingTh, textAlign: "right" }}>Amount</th>
+                  <th style={pendingTh}>Submitted</th>
+                  <th style={pendingTh}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pendingPurchases.map((p) => (
+                  <tr key={p._id} style={{ borderTop: "1px solid #fef3c7" }}>
+                    <td style={pendingTd}>
+                      <div style={{ fontWeight: 600 }}>{p.employee?.name || "—"}</div>
+                      <div style={{ fontSize: 11, color: "#78716c" }}>
+                        {p.employee?.phone || p.employee?.email || ""}
+                      </div>
+                    </td>
+                    <td style={{ ...pendingTd, maxWidth: 220 }}>{p.description}</td>
+                    <td style={{ ...pendingTd, textAlign: "right", fontWeight: 700, color: "#dc2626" }}>
+                      {formatCurrency(p.amount)}
+                    </td>
+                    <td style={pendingTd}>{formatDate(p.createdAt)}</td>
+                    <td style={pendingTd}>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          disabled={actionId === p._id}
+                          onClick={() => handlePurchaseAction(p._id, "approve")}
+                          style={{
+                            padding: "6px 12px",
+                            background: "#16a34a",
+                            color: "#fff",
+                            border: "none",
+                            borderRadius: 8,
+                            fontWeight: 600,
+                            fontSize: 12,
+                            cursor: actionId === p._id ? "not-allowed" : "pointer",
+                            opacity: actionId === p._id ? 0.6 : 1,
+                          }}
+                        >
+                          Deduct
+                        </button>
+                        <button
+                          type="button"
+                          disabled={actionId === p._id}
+                          onClick={() => handlePurchaseAction(p._id, "reject")}
+                          style={{
+                            padding: "6px 12px",
+                            background: "#fff",
+                            color: "#64748b",
+                            border: "1px solid #e2e8f0",
+                            borderRadius: 8,
+                            fontWeight: 600,
+                            fontSize: 12,
+                            cursor: actionId === p._id ? "not-allowed" : "pointer",
+                          }}
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Purchase records — all employees */}
+      <div
+        style={{
+          background: "#fff",
+          border: "1px solid #e2e8f0",
+          borderRadius: 14,
+          padding: "16px 20px",
+          marginBottom: 24,
+        }}
+      >
+        <h3 style={{ margin: "0 0 4px", fontSize: 16, color: "#0f172a", fontWeight: 700 }}>
+          Purchase records
+        </h3>
+        <p style={{ margin: "0 0 16px", fontSize: 13, color: "#64748b" }}>
+          See what each employee purchased — filter by employee, month, or date range
+        </p>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+            gap: 12,
+            marginBottom: 12,
+          }}
+        >
+          <div>
+            <label style={filterLabel}>Employee</label>
+            <select
+              value={purchaseEmployee}
+              onChange={(e) => setPurchaseEmployee(e.target.value)}
+              style={filterInput}
+            >
+              <option value="">All employees</option>
+              {summary.map((row) => (
+                <option key={row.employee.id} value={row.employee.id}>
+                  {row.employee.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label style={filterLabel}>Month</label>
+            <input
+              type="month"
+              value={purchaseMonth}
+              onChange={(e) => {
+                setPurchaseMonth(e.target.value);
+                if (e.target.value) {
+                  setPurchaseFrom("");
+                  setPurchaseTo("");
+                }
+              }}
+              style={filterInput}
+            />
+          </div>
+          <div>
+            <label style={filterLabel}>From</label>
+            <input
+              type="date"
+              value={purchaseFrom}
+              disabled={Boolean(purchaseMonth)}
+              onChange={(e) => {
+                setPurchaseFrom(e.target.value);
+                if (e.target.value) setPurchaseMonth("");
+              }}
+              style={filterInput}
+            />
+          </div>
+          <div>
+            <label style={filterLabel}>To</label>
+            <input
+              type="date"
+              value={purchaseTo}
+              disabled={Boolean(purchaseMonth)}
+              onChange={(e) => {
+                setPurchaseTo(e.target.value);
+                if (e.target.value) setPurchaseMonth("");
+              }}
+              style={filterInput}
+            />
+          </div>
+          <div>
+            <label style={filterLabel}>Status</label>
+            <select
+              value={purchaseStatus}
+              onChange={(e) => setPurchaseStatus(e.target.value)}
+              style={filterInput}
+            >
+              <option value="all">All</option>
+              <option value="completed">Deducted</option>
+              <option value="pending">Pending</option>
+              <option value="cancelled">Rejected</option>
+            </select>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={() => loadPurchaseRecords()}
+            style={{
+              padding: "8px 16px",
+              background: "#0f172a",
+              color: "#fff",
+              border: "none",
+              borderRadius: 8,
+              fontWeight: 600,
+              fontSize: 13,
+              cursor: "pointer",
+            }}
+          >
+            Apply filter
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setPurchaseEmployee("");
+              setPurchaseFrom("");
+              setPurchaseTo("");
+              setPurchaseMonth("");
+              setPurchaseStatus("all");
+              loadPurchaseRecords({
+                employee: "",
+                from: "",
+                to: "",
+                month: "",
+                status: "all",
+              });
+            }}
+            style={{
+              padding: "8px 16px",
+              background: "#f1f5f9",
+              color: "#334155",
+              border: "none",
+              borderRadius: 8,
+              fontWeight: 600,
+              fontSize: 13,
+              cursor: "pointer",
+            }}
+          >
+            Clear
+          </button>
+        </div>
+
+        {purchaseSummary && (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+              gap: 10,
+              marginBottom: 16,
+            }}
+          >
+            <SummaryPill label="Records" value={String(purchaseSummary.count)} />
+            <SummaryPill
+              label="Deducted"
+              value={formatCurrency(purchaseSummary.completedTotal)}
+              color="#16a34a"
+            />
+            <SummaryPill
+              label="Pending"
+              value={formatCurrency(purchaseSummary.pendingTotal)}
+              color="#d97706"
+            />
+            <SummaryPill
+              label="Rejected"
+              value={formatCurrency(purchaseSummary.cancelledTotal)}
+              color="#64748b"
+            />
+          </div>
+        )}
+
+        {purchaseLoading ? (
+          <div style={{ padding: 24, textAlign: "center", color: "#94a3b8" }}>Loading…</div>
+        ) : purchaseRecords.length === 0 ? (
+          <div style={{ padding: 24, textAlign: "center", color: "#94a3b8" }}>
+            No purchase records for this filter.
+          </div>
+        ) : (
+          <div style={{ overflowX: "auto", maxHeight: 400, overflowY: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead style={{ background: "#f8fafc", position: "sticky", top: 0 }}>
+                <tr>
+                  <th style={txnTh}>Date</th>
+                  <th style={txnTh}>Employee</th>
+                  <th style={txnTh}>Product</th>
+                  <th style={{ ...txnTh, textAlign: "right" }}>Amount</th>
+                  <th style={txnTh}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {purchaseRecords.map((p) => (
+                  <tr key={p._id} style={{ borderTop: "1px solid #f1f5f9" }}>
+                    <td style={txnTd}>{formatDate(p.createdAt)}</td>
+                    <td style={txnTd}>
+                      <div style={{ fontWeight: 600 }}>{p.employee?.name || "—"}</div>
+                      <div style={{ fontSize: 11, color: "#94a3b8" }}>
+                        {p.employee?.phone || ""}
+                      </div>
+                    </td>
+                    <td style={{ ...txnTd, maxWidth: 220 }}>{p.description}</td>
+                    <td
+                      style={{
+                        ...txnTd,
+                        textAlign: "right",
+                        fontWeight: 700,
+                        color: "#dc2626",
+                      }}
+                    >
+                      {formatCurrency(p.amount)}
+                    </td>
+                    <td style={txnTd}>
+                      <StatusBadge status={p.status} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <div
@@ -309,6 +757,124 @@ export default function WalletTab() {
               + Add transaction
             </button>
 
+            <div
+              style={{
+                marginBottom: 20,
+                padding: 14,
+                background: "#f8fafc",
+                borderRadius: 12,
+                border: "1px solid #e2e8f0",
+              }}
+            >
+              <h4 style={{ margin: "0 0 10px", fontSize: 14, fontWeight: 700, color: "#334155" }}>
+                Purchase history
+              </h4>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+                  gap: 8,
+                  marginBottom: 10,
+                }}
+              >
+                <input
+                  type="month"
+                  value={modalPurchaseMonth}
+                  onChange={(e) => {
+                    setModalPurchaseMonth(e.target.value);
+                    if (e.target.value) {
+                      setModalPurchaseFrom("");
+                      setModalPurchaseTo("");
+                    }
+                  }}
+                  style={filterInput}
+                />
+                <input
+                  type="date"
+                  value={modalPurchaseFrom}
+                  disabled={Boolean(modalPurchaseMonth)}
+                  onChange={(e) => {
+                    setModalPurchaseFrom(e.target.value);
+                    if (e.target.value) setModalPurchaseMonth("");
+                  }}
+                  style={filterInput}
+                  placeholder="From"
+                />
+                <input
+                  type="date"
+                  value={modalPurchaseTo}
+                  disabled={Boolean(modalPurchaseMonth)}
+                  onChange={(e) => {
+                    setModalPurchaseTo(e.target.value);
+                    if (e.target.value) setModalPurchaseMonth("");
+                  }}
+                  style={filterInput}
+                />
+                <button
+                  type="button"
+                  onClick={() =>
+                    loadModalPurchases(selectedEmployee.employee.id)
+                  }
+                  style={{
+                    padding: "8px 12px",
+                    background: "#0f172a",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 8,
+                    fontWeight: 600,
+                    fontSize: 12,
+                    cursor: "pointer",
+                  }}
+                >
+                  Apply
+                </button>
+              </div>
+              {modalPurchaseSummary && (
+                <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8 }}>
+                  {modalPurchaseSummary.count} records · Deducted{" "}
+                  <strong style={{ color: "#16a34a" }}>
+                    {formatCurrency(modalPurchaseSummary.completedTotal)}
+                  </strong>
+                  {" · "}Pending{" "}
+                  <strong style={{ color: "#d97706" }}>
+                    {formatCurrency(modalPurchaseSummary.pendingTotal)}
+                  </strong>
+                </div>
+              )}
+              {modalPurchaseLoading ? (
+                <div style={{ fontSize: 13, color: "#94a3b8" }}>Loading…</div>
+              ) : modalPurchases.length === 0 ? (
+                <div style={{ fontSize: 13, color: "#94a3b8" }}>No purchases in this period.</div>
+              ) : (
+                <div style={{ maxHeight: 180, overflowY: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                    <thead>
+                      <tr style={{ borderBottom: "1px solid #e2e8f0" }}>
+                        <th style={txnTh}>Date</th>
+                        <th style={txnTh}>Product</th>
+                        <th style={{ ...txnTh, textAlign: "right" }}>Amt</th>
+                        <th style={txnTh}>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {modalPurchases.map((p) => (
+                        <tr key={p._id} style={{ borderTop: "1px solid #f1f5f9" }}>
+                          <td style={txnTd}>{formatDate(p.createdAt)}</td>
+                          <td style={{ ...txnTd, maxWidth: 160 }}>{p.description}</td>
+                          <td style={{ ...txnTd, textAlign: "right", fontWeight: 600, color: "#dc2626" }}>
+                            {formatCurrency(p.amount)}
+                          </td>
+                          <td style={txnTd}>
+                            <StatusBadge status={p.status} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
             {employeeLoading ? (
               <div style={{ padding: 24, textAlign: "center", color: "#94a3b8" }}>
                 Loading transactions…
@@ -378,6 +944,9 @@ export default function WalletTab() {
                   onClick={(e) => e.stopPropagation()}
                 >
                   <h3 style={styles.modalTitle}>Add wallet transaction</h3>
+                  <p style={{ fontSize: 13, color: "#64748b", marginTop: -8, marginBottom: 16 }}>
+                    Use <strong>Cash deposit</strong> when an employee pays cash at the salon.
+                  </p>
                   <form onSubmit={handleAddTransaction}>
                     <label style={{ display: "block", fontWeight: 600, marginBottom: 6, color: "#475569", fontSize: 13 }}>
                       Type
@@ -537,3 +1106,77 @@ const txnTd = {
   padding: "10px 12px",
   color: "#1f2937",
 };
+
+const pendingTh = {
+  textAlign: "left",
+  padding: "8px 10px",
+  fontSize: 11,
+  fontWeight: 700,
+  color: "#92400e",
+  textTransform: "uppercase",
+};
+
+const pendingTd = {
+  padding: "10px",
+  color: "#1c1917",
+  verticalAlign: "top",
+};
+
+const filterLabel = {
+  display: "block",
+  fontSize: 11,
+  fontWeight: 600,
+  color: "#64748b",
+  marginBottom: 4,
+  textTransform: "uppercase",
+};
+
+const filterInput = {
+  width: "100%",
+  padding: "8px 10px",
+  border: "1px solid #e2e8f0",
+  borderRadius: 8,
+  fontSize: 13,
+  boxSizing: "border-box",
+};
+
+function SummaryPill({ label, value, color = "#0f172a" }) {
+  return (
+    <div
+      style={{
+        background: "#f8fafc",
+        border: "1px solid #e2e8f0",
+        borderRadius: 10,
+        padding: "10px 12px",
+        textAlign: "center",
+      }}
+    >
+      <div style={{ fontSize: 10, textTransform: "uppercase", color: "#94a3b8" }}>{label}</div>
+      <div style={{ fontSize: 15, fontWeight: 700, color, marginTop: 4 }}>{value}</div>
+    </div>
+  );
+}
+
+function StatusBadge({ status }) {
+  const map = {
+    completed: { label: "Deducted", bg: "#dcfce7", color: "#15803d" },
+    pending: { label: "Pending", bg: "#fef3c7", color: "#b45309" },
+    cancelled: { label: "Rejected", bg: "#f1f5f9", color: "#64748b" },
+  };
+  const s = map[status] || map.pending;
+  return (
+    <span
+      style={{
+        fontSize: 10,
+        fontWeight: 700,
+        textTransform: "uppercase",
+        padding: "3px 8px",
+        borderRadius: 999,
+        background: s.bg,
+        color: s.color,
+      }}
+    >
+      {s.label}
+    </span>
+  );
+}

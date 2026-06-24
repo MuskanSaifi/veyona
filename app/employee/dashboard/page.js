@@ -148,7 +148,19 @@ export default function EmployeeDashboard() {
         toast.error(data.message || "Could not update");
         return;
       }
-      toast.success(trackingAction === "start_service" ? "Service started" : "Service ended");
+      if (trackingAction === "end_service") {
+        const wa = data.feedbackWhatsapp;
+        if (wa?.success) {
+          toast.success("Service ended — feedback sent on WhatsApp");
+        } else if (wa?.message) {
+          toast.success("Service ended");
+          toast.error(wa.message || "Feedback WhatsApp could not be sent");
+        } else {
+          toast.success("Service ended");
+        }
+      } else {
+        toast.success(trackingAction === "start_service" ? "Service started" : "Updated");
+      }
       fetchAppointments();
     } catch {
       toast.error("Network error");

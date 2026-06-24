@@ -4,6 +4,7 @@ import Service from "@/models/Service";
 import Salon from "@/models/Salon";
 import cloudinary from "@/lib/cloudinary";
 import { uploadImageBuffer } from "@/lib/cloudinaryUpload";
+import { validateParentServiceDepth } from "@/lib/serviceTree";
 
 export async function GET(req, { params }) {
   await connectDB();
@@ -66,8 +67,12 @@ export async function PUT(req, { params }) {
       );
     }
 
-    // If service is being assigned a parent, check if the parent has price/duration and remove it
+    // If service is being assigned a parent, check depth and remove parent price/duration
     if (finalParentService && finalParentService !== service.parentService?.toString()) {
+      const depthCheck = await validateParentServiceDepth(Service, finalParentService);
+      if (!depthCheck.ok) {
+        return NextResponse.json({ message: depthCheck.message }, { status: 400 });
+      }
       const parentServiceDoc = await Service.findById(finalParentService);
       if (parentServiceDoc && (parentServiceDoc.price || parentServiceDoc.duration)) {
         // Parent now has a child, so it's a grouping service - remove price/duration
