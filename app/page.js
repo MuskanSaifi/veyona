@@ -17,6 +17,7 @@ import ServicesSection from "./components/ServicesSection";
 import AllProductsSection from "./components/AllProductsSection";
 import ShortAboutSection from "./components/ShortAboutSection";
 import ReelSection from "./components/ReelSection";
+import PromoBannersSection from "./components/PromoBannersSection";
 
 export default function Home() {
   const [banners, setBanners] = useState([]);
@@ -290,6 +291,9 @@ export default function Home() {
 
       {/* Short About Section - dynamic (image left, content right) */}
       <ShortAboutSection />
+
+      {/* Promotional offers — bridal, seasonal, etc. */}
+      <PromoBannersSection placement="homepage" title="Special Offers & Promotions" />
 
       {/* Our Services - 2x2 simple cards (Beauty, Aesthetics, Dental, Tattoo) */}
       <section className="w-full py-14 md:py-20" style={{ background: "var(--bg-cream)" }}>

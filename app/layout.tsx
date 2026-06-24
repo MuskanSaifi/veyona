@@ -7,6 +7,7 @@ import Footer from "./components/Footer";
 import Chatbot from "./components/Chatbot";
 import WhatsAppFloatingButton from "./components/WhatsAppFloatingButton";
 import MobileStickyBookButton from "./components/MobileStickyBookButton";
+import PromoSitewideBar from "./components/PromoSitewideBar";
 import ReduxProvider from "./components/ReduxProvider";
 import connectDB from "@/lib/db";
 import ThemeSettings from "@/models/ThemeSettings";
@@ -124,6 +125,7 @@ export default async function RootLayout({
         <ReduxProvider>
           <Toaster position="top-right" />
           <Header />
+          <PromoSitewideBar />
           {children}
           <Footer />
           <Chatbot />

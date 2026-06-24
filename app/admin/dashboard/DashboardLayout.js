@@ -32,7 +32,7 @@ import ReelTab from "./ReelTab";
 import SiteSettingsTab from "./SiteSettingsTab";
 import WalletTab from "./WalletTab";
 import CustomerFeedbackTab from "./CustomerFeedbackTab";
-import AllInvoicesTab from "./AllInvoicesTab";
+import PromoBannerTab from "./PromoBannerTab";
 import {
   FiHome,
   FiLogOut,
@@ -107,6 +107,14 @@ export default function DashboardLayout() {
   >
     <FiHome className={styles.icon} />
     Home Banner
+  </button>
+
+  <button
+    className={`${styles.menuItem} ${activeTab === "promo-banners" ? styles.active : ""}`}
+    onClick={() => setActiveTab("promo-banners")}
+  >
+    <FiTag className={styles.icon} />
+    Promo Banners
   </button>
 
   <button
@@ -366,6 +374,7 @@ export default function DashboardLayout() {
           <AdminHomeTab setActiveTab={setActiveTab} />
         )}
         {activeTab === "home" && <HomeTab />}
+        {activeTab === "promo-banners" && <PromoBannerTab />}
         {activeTab === "home-about" && <HomeAboutTab />}
         {activeTab === "categories" && <CategoryTab />}
         {activeTab === "services" && <ServiceTab />}
