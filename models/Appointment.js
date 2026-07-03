@@ -10,7 +10,8 @@ const appointmentSchema = new mongoose.Schema(
     salon: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Salon",
-      required: true,
+      required: false,
+      default: undefined,
     },
     employee: {
       type: mongoose.Schema.Types.ObjectId,

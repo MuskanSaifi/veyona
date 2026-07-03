@@ -150,15 +150,6 @@ export async function POST(req) {
       employeeId: employee || null,
       serviceIds,
     });
-    if (!resolvedSalon) {
-      return NextResponse.json(
-        {
-          message:
-            "No salon is configured for this service. Please add an active salon in admin or link employees to a salon.",
-        },
-        { status: 400 }
-      );
-    }
 
     const getQtyForService = (id) => quantitiesByServiceId?.[id?.toString?.()] || legacyQuantity;
 
@@ -287,7 +278,7 @@ export async function POST(req) {
         }
       : {
           customer: customer._id,
-          salon: resolvedSalon,
+          ...(resolvedSalon ? { salon: resolvedSalon } : {}),
           date: dateD,
           time,
           $or: [{ status: "confirmed" }, { status: "pending" }],
@@ -363,7 +354,7 @@ export async function POST(req) {
 
     const appointment = await Appointment.create({
       customer: customer._id,
-      salon: resolvedSalon,
+      ...(resolvedSalon ? { salon: resolvedSalon } : {}),
       ...(employee ? { employee } : {}),
       service: primaryServiceId,
       services: servicesPayload,

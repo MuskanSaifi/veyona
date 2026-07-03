@@ -623,13 +623,6 @@ function BookPageContent() {
       }
     }
 
-    if (!salonId) {
-      toast.error(
-        "No salon linked to this booking. Admin: add an active salon and link employees to it."
-      );
-      return;
-    }
-
     setLoading(true);
     try {
       const res = await fetch("/api/appointment", {
@@ -637,7 +630,7 @@ function BookPageContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...formData,
-          salon: salonId,
+          salon: salonId || undefined,
           employee: formData.employee || undefined,
           service: service?._id || serviceId,
           services: servicesList.length > 0
