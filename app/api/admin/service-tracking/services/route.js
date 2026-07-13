@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import ServiceVisit from "@/models/ServiceVisit";
-import { requireAdmin } from "@/lib/serviceTrackingAuth";
+import { requireAdminOrPermittedEmployee } from "@/lib/serviceTrackingAuth";
 
 /**
  * GET /api/admin/service-tracking/services
@@ -17,7 +17,7 @@ import { requireAdmin } from "@/lib/serviceTrackingAuth";
 export async function GET(req) {
   await connectDB();
 
-  const auth = requireAdmin(req);
+  const auth = await requireAdminOrPermittedEmployee(req);
   if (auth.response) return auth.response;
 
   const { searchParams } = new URL(req.url);

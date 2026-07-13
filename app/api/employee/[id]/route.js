@@ -3,18 +3,30 @@ import connectDB from "@/lib/db";
 import Employee from "@/models/Employee";
 import cloudinary from "@/lib/cloudinary";
 import bcrypt from "bcryptjs";
+import { isAdminRequest } from "@/lib/serviceTrackingAuth";
+import { sanitizePermissions } from "@/lib/panelMenu";
+
+function stripSecrets(doc, { includeLoginPassword = false } = {}) {
+  if (!doc) return doc;
+  const obj = typeof doc.toObject === "function" ? doc.toObject() : { ...doc };
+  delete obj.password;
+  if (!includeLoginPassword) delete obj.loginPassword;
+  return obj;
+}
 
 export async function GET(req, { params }) {
   await connectDB();
   const { id } = await params;
+  const includeLoginPassword = isAdminRequest(req);
   const employee = await Employee.findById(id)
+    .select(includeLoginPassword ? "-password" : "-password -loginPassword")
     .populate("salon")
     .populate("categories")
     .populate("services");
   if (!employee) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  return NextResponse.json(employee);
+  return NextResponse.json(stripSecrets(employee, { includeLoginPassword }));
 }
 
 export async function PUT(req, { params }) {
@@ -33,6 +45,7 @@ export async function PUT(req, { params }) {
     const services = formData.get("services");
     const experience = formData.get("experience");
     const active = formData.get("active");
+    const permissionsRaw = formData.get("permissions");
 
     const employee = await Employee.findById(id);
     if (!employee) {
@@ -48,7 +61,7 @@ export async function PUT(req, { params }) {
       updateData.salon = trimmed ? trimmed : null;
     }
     if (experience) updateData.experience = parseInt(experience);
-    if (active !== null) updateData.active = active === "true";
+    if (active !== null && active !== undefined) updateData.active = active === "true";
 
     if (categories !== null && categories !== "null") {
       updateData.categories = categories.split(",").filter((id) => id.trim());
@@ -58,8 +71,14 @@ export async function PUT(req, { params }) {
       updateData.services = services.split(",").filter((id) => id.trim());
     }
 
+    if (permissionsRaw !== null && permissionsRaw !== undefined) {
+      updateData.permissions = sanitizePermissions(permissionsRaw);
+    }
+
     if (password && String(password).trim().length >= 6) {
-      updateData.password = await bcrypt.hash(String(password).trim(), 10);
+      const plainPassword = String(password).trim();
+      updateData.password = await bcrypt.hash(plainPassword, 10);
+      updateData.loginPassword = plainPassword;
     }
 
     if (file && file !== "null") {
@@ -84,11 +103,14 @@ export async function PUT(req, { params }) {
     const updated = await Employee.findByIdAndUpdate(id, updateData, {
       new: true,
     })
+      .select("-password")
       .populate("salon")
       .populate("categories")
       .populate("services");
 
-    return NextResponse.json(updated);
+    return NextResponse.json(
+      stripSecrets(updated, { includeLoginPassword: isAdminRequest(req) })
+    );
   } catch (error) {
     return NextResponse.json(
       { message: error.message },
@@ -113,7 +135,3 @@ export async function DELETE(req, { params }) {
   await Employee.findByIdAndDelete(id);
   return NextResponse.json({ success: true });
 }
-
-
-
-

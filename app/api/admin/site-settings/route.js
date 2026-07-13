@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import SiteSettings from "@/models/SiteSettings";
-import { requireAdmin } from "@/lib/serviceTrackingAuth";
+import { requireAdminOrPermittedEmployee } from "@/lib/serviceTrackingAuth";
 
 /**
  * Admin-only CRUD for SiteSettings.
@@ -11,7 +11,7 @@ import { requireAdmin } from "@/lib/serviceTrackingAuth";
  */
 export async function GET(req) {
   await connectDB();
-  const auth = requireAdmin(req);
+  const auth = await requireAdminOrPermittedEmployee(req);
   if (auth.response) return auth.response;
 
   const doc = await SiteSettings.findOne().sort({ createdAt: -1 }).lean();
@@ -27,7 +27,7 @@ export async function GET(req) {
 
 export async function PUT(req) {
   await connectDB();
-  const auth = requireAdmin(req);
+  const auth = await requireAdminOrPermittedEmployee(req);
   if (auth.response) return auth.response;
 
   let body;

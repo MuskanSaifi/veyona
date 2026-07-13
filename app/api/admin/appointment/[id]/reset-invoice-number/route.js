@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import Appointment from "@/models/Appointment";
-import { requireAdmin } from "@/lib/serviceTrackingAuth";
+import { requireAdminOrPermittedEmployee } from "@/lib/serviceTrackingAuth";
 import { allocateInvoiceNumber } from "@/lib/invoiceNumber";
 
 /**
@@ -20,7 +20,7 @@ import { allocateInvoiceNumber } from "@/lib/invoiceNumber";
 export async function POST(req, { params }) {
   await connectDB();
 
-  const auth = requireAdmin(req);
+  const auth = await requireAdminOrPermittedEmployee(req);
   if (auth.response) return auth.response;
 
   const { id } = await params;

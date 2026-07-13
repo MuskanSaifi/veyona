@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import Service from "@/models/Service";
-import { requireAdmin } from "@/lib/serviceTrackingAuth";
+import { requireAdminOrPermittedEmployee } from "@/lib/serviceTrackingAuth";
 
 /**
  * GET /api/admin/services — admin-only service list (all statuses, no CDN cache).
@@ -9,7 +9,7 @@ import { requireAdmin } from "@/lib/serviceTrackingAuth";
 export async function GET(req) {
   await connectDB();
 
-  const auth = requireAdmin(req);
+  const auth = await requireAdminOrPermittedEmployee(req);
   if (auth.response) return auth.response;
 
   const services = await Service.find({})

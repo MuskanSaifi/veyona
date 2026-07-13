@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import Appointment from "@/models/Appointment";
-import { requireAdmin } from "@/lib/serviceTrackingAuth";
+import { requireAdminOrPermittedEmployee } from "@/lib/serviceTrackingAuth";
 import {
   appointmentServiceLabel,
   appointmentTotalPayable,
@@ -18,7 +18,7 @@ export const runtime = "nodejs";
 export async function GET(req) {
   await connectDB();
 
-  const auth = requireAdmin(req);
+  const auth = await requireAdminOrPermittedEmployee(req);
   if (auth.response) return auth.response;
 
   const { searchParams } = new URL(req.url);

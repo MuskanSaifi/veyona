@@ -4,6 +4,20 @@ import Employee from "@/models/Employee";
 import cloudinary from "@/lib/cloudinary";
 import bcrypt from "bcryptjs";
 import Service from "@/models/Service";
+import { isAdminRequest } from "@/lib/serviceTrackingAuth";
+import { sanitizePermissions } from "@/lib/panelMenu";
+
+function stripSecrets(doc, { includeLoginPassword = false } = {}) {
+  if (!doc) return doc;
+  const obj = typeof doc.toObject === "function" ? doc.toObject() : { ...doc };
+  delete obj.password;
+  if (!includeLoginPassword) delete obj.loginPassword;
+  return obj;
+}
+
+function stripList(list, includeLoginPassword) {
+  return (list || []).map((e) => stripSecrets(e, { includeLoginPassword }));
+}
 
 export async function GET(req) {
   await connectDB();
@@ -11,6 +25,7 @@ export async function GET(req) {
   const salonId = searchParams.get("salonId");
   const serviceId = searchParams.get("serviceId");
   const categoryId = searchParams.get("categoryId");
+  const includeLoginPassword = isAdminRequest(req);
 
   // Base query (salon / active etc.)
   const baseQuery = {};
@@ -24,11 +39,12 @@ export async function GET(req) {
       ...baseQuery,
       categories: categoryId,
     })
+      .select(includeLoginPassword ? "-password" : "-password -loginPassword")
       .populate("salon")
       .populate("categories")
       .populate("services")
       .sort({ createdAt: -1 });
-    return NextResponse.json(employees);
+    return NextResponse.json(stripList(employees, includeLoginPassword));
   }
 
   // When filtering by service, treat:
@@ -44,6 +60,7 @@ export async function GET(req) {
     }
 
     employees = await Employee.find(baseQuery)
+      .select(includeLoginPassword ? "-password" : "-password -loginPassword")
       .populate("salon")
       .populate("categories")
       .populate("services")
@@ -84,16 +101,17 @@ export async function GET(req) {
       });
     }
 
-    return NextResponse.json(filtered);
+    return NextResponse.json(stripList(filtered, includeLoginPassword));
   }
 
   // No specific filters
   employees = await Employee.find(baseQuery)
+    .select(includeLoginPassword ? "-password" : "-password -loginPassword")
     .populate("salon")
     .populate("categories")
     .populate("services")
     .sort({ createdAt: -1 });
-  return NextResponse.json(employees);
+  return NextResponse.json(stripList(employees, includeLoginPassword));
 }
 
 export async function POST(req) {
@@ -110,6 +128,7 @@ export async function POST(req) {
     const categories = formData.get("categories"); // comma-separated IDs
     const services = formData.get("services"); // comma-separated IDs (specializations)
     const experience = formData.get("experience");
+    const permissionsRaw = formData.get("permissions");
 
     if (!name || !email || !password || !phone) {
       return NextResponse.json(
@@ -136,7 +155,8 @@ export async function POST(req) {
       public_id = upload.public_id;
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const plainPassword = String(password).trim();
+    const hashedPassword = await bcrypt.hash(plainPassword, 10);
 
     const salonId = (salon || "").toString().trim();
 
@@ -144,9 +164,11 @@ export async function POST(req) {
       name,
       email,
       password: hashedPassword,
+      loginPassword: plainPassword,
       phone,
       image,
       public_id,
+      permissions: sanitizePermissions(permissionsRaw),
     };
 
     if (salonId) {
@@ -168,11 +190,12 @@ export async function POST(req) {
     const employee = await Employee.create(employeeData);
 
     const populated = await Employee.findById(employee._id)
+      .select("-password")
       .populate("salon")
       .populate("categories")
       .populate("services");
 
-    return NextResponse.json(populated);
+    return NextResponse.json(stripSecrets(populated, { includeLoginPassword: true }));
   } catch (error) {
     if (error.code === 11000) {
       return NextResponse.json(
@@ -186,4 +209,3 @@ export async function POST(req) {
     );
   }
 }
-

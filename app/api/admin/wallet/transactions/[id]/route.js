@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import WalletTransaction from "@/models/WalletTransaction";
-import { requireAdmin } from "@/lib/serviceTrackingAuth";
+import { requireAdminOrPermittedEmployee } from "@/lib/serviceTrackingAuth";
 
 /**
  * PATCH /api/admin/wallet/transactions/[id]
@@ -11,7 +11,7 @@ import { requireAdmin } from "@/lib/serviceTrackingAuth";
  */
 export async function PATCH(req, { params }) {
   await connectDB();
-  const auth = requireAdmin(req);
+  const auth = await requireAdminOrPermittedEmployee(req);
   if (auth.response) return auth.response;
 
   const { id } = await params;

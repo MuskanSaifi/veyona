@@ -4,6 +4,20 @@ import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import * as styles from "./styles";
 import mobile from "./AdminMobileCards.module.css";
+import { PANEL_MENU_ITEMS } from "@/lib/panelMenu";
+
+const emptyForm = {
+  name: "",
+  email: "",
+  password: "",
+  phone: "",
+  salon: "",
+  categories: [],
+  services: [],
+  experience: "",
+  image: null,
+  permissions: [],
+};
 
 export default function EmployeeTab() {
   const [employees, setEmployees] = useState([]);
@@ -12,17 +26,7 @@ export default function EmployeeTab() {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [viewMore, setViewMore] = useState(null);
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    password: "",
-    phone: "",
-    salon: "",
-    categories: [],
-    services: [],
-    experience: "",
-    image: null,
-  });
+  const [formData, setFormData] = useState(emptyForm);
   const [categoryServices, setCategoryServices] = useState([]);
   const [loadingServices, setLoadingServices] = useState(false);
   const [listSearch, setListSearch] = useState("");
@@ -149,6 +153,26 @@ export default function EmployeeTab() {
     });
   };
 
+  const handlePermissionToggle = (key) => {
+    setFormData({
+      ...formData,
+      permissions: formData.permissions.includes(key)
+        ? formData.permissions.filter((k) => k !== key)
+        : [...formData.permissions, key],
+    });
+  };
+
+  const selectAllPermissions = () => {
+    setFormData({
+      ...formData,
+      permissions: PANEL_MENU_ITEMS.map((i) => i.key),
+    });
+  };
+
+  const clearAllPermissions = () => {
+    setFormData({ ...formData, permissions: [] });
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.name || !formData.email || !formData.phone) {
@@ -186,6 +210,7 @@ export default function EmployeeTab() {
     if (formData.image) {
       data.append("image", formData.image);
     }
+    data.append("permissions", JSON.stringify(formData.permissions || []));
 
     try {
       const url = editing ? `/api/employee/${editing._id}` : "/api/employee";
@@ -202,17 +227,7 @@ export default function EmployeeTab() {
       fetchEmployees();
       setShowModal(false);
       setEditing(null);
-      setFormData({
-        name: "",
-        email: "",
-        password: "",
-        phone: "",
-        salon: "",
-        categories: [],
-        services: [],
-        experience: "",
-        image: null,
-      });
+      setFormData(emptyForm);
     } catch (error) {
       toast.error("Error saving employee");
     }
@@ -231,6 +246,7 @@ export default function EmployeeTab() {
       services: employee.services?.map((s) => s._id || s) || [],
       experience: employee.experience?.toString() || "",
       image: null,
+      permissions: Array.isArray(employee.permissions) ? [...employee.permissions] : [],
     });
     setShowModal(true);
     fetchServicesForCategories(catIds);
@@ -278,17 +294,7 @@ export default function EmployeeTab() {
         <button
           onClick={() => {
             setEditing(null);
-            setFormData({
-              name: "",
-              email: "",
-              password: "",
-              phone: "",
-              salon: "",
-              categories: [],
-              services: [],
-              experience: "",
-              image: null,
-            });
+            setFormData(emptyForm);
             setShowModal(true);
           }}
           style={styles.addButton}
@@ -410,7 +416,17 @@ export default function EmployeeTab() {
                 <div className={mobile.summary}>
                   <strong>Phone:</strong> {employee.phone}
                   <br />
-                  <strong>Email:</strong> {employee.email}
+                  <strong>Email / Login:</strong> {employee.email}
+                  <br />
+                  <strong>Password:</strong>{" "}
+                  {employee.loginPassword || (
+                    <span style={{ color: "#9ca3af" }}>Set via Edit</span>
+                  )}
+                  <br />
+                  <strong>Access:</strong>{" "}
+                  {employee.permissions?.length
+                    ? `${employee.permissions.length} option(s)`
+                    : "None"}
                   <br />
                   <strong>Received:</strong>{" "}
                   {formatCurrency(receivedByEmployee[String(employee._id)]?.totalReceived || 0)}
@@ -437,6 +453,8 @@ export default function EmployeeTab() {
                 <th style={styles.table.th}>Image</th>
                 <th style={styles.table.th}>Name</th>
                 <th style={styles.table.th}>Email</th>
+                <th style={styles.table.th}>Login Pass</th>
+                <th style={styles.table.th}>Access</th>
                 <th style={styles.table.th}>Phone</th>
                 <th style={styles.table.th}>Salon</th>
                 <th style={styles.table.th}>Specialization</th>
@@ -479,6 +497,24 @@ export default function EmployeeTab() {
                   </td>
                   <td style={styles.table.td}>
                     <p style={styles.table.textSmall}>{employee.email}</p>
+                  </td>
+                  <td style={styles.table.td}>
+                    <p
+                      style={{
+                        ...styles.table.textSmall,
+                        fontFamily: "ui-monospace, monospace",
+                        userSelect: "all",
+                      }}
+                    >
+                      {employee.loginPassword || "—"}
+                    </p>
+                  </td>
+                  <td style={styles.table.td}>
+                    <p style={styles.table.textSmall}>
+                      {employee.permissions?.length
+                        ? `${employee.permissions.length} options`
+                        : "None"}
+                    </p>
                   </td>
                   <td style={styles.table.td}>
                     <p style={styles.table.text}>{employee.phone}</p>
@@ -575,6 +611,34 @@ export default function EmployeeTab() {
               <div className={mobile.detailRow}>
                 <div className={mobile.detailLabel}>Name</div>
                 <div className={mobile.detailValue}>{viewMore.name}</div>
+              </div>
+              <div className={mobile.detailSection}>
+                <div className={mobile.detailSectionTitle}>Login credentials</div>
+                <div style={{ fontSize: 14, lineHeight: 1.7 }}>
+                  <div>Email: {viewMore.email}</div>
+                  <div>
+                    Password:{" "}
+                    <span style={{ fontFamily: "ui-monospace, monospace", userSelect: "all" }}>
+                      {viewMore.loginPassword || "Not saved yet — set a new password in Edit"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div className={mobile.detailSection}>
+                <div className={mobile.detailSectionTitle}>Panel access</div>
+                <div style={{ fontSize: 13, lineHeight: 1.7 }}>
+                  {viewMore.permissions?.length ? (
+                    <ul style={{ margin: 0, paddingLeft: 18 }}>
+                      {PANEL_MENU_ITEMS.filter((i) =>
+                        viewMore.permissions.includes(i.key)
+                      ).map((i) => (
+                        <li key={i.key}>{i.label}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <span style={{ color: "#9ca3af" }}>No admin options assigned</span>
+                  )}
+                </div>
               </div>
               <div className={mobile.detailSection}>
                 <div className={mobile.detailSectionTitle}>Contact</div>
@@ -763,6 +827,86 @@ export default function EmployeeTab() {
                 style={styles.inputStyle}
               />
               {editing?.image && <p style={{ fontSize: 12, color: "#666" }}>Current image will be replaced</p>}
+
+              <div style={{ marginTop: 8, marginBottom: 16 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    flexWrap: "wrap",
+                    marginBottom: 8,
+                  }}
+                >
+                  <label style={{ display: "block", fontWeight: 600, fontSize: 14 }}>
+                    Panel access (sidebar options)
+                  </label>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      type="button"
+                      onClick={selectAllPermissions}
+                      style={{
+                        ...styles.cancelButton,
+                        padding: "6px 10px",
+                        fontSize: 12,
+                        margin: 0,
+                      }}
+                    >
+                      Select all
+                    </button>
+                    <button
+                      type="button"
+                      onClick={clearAllPermissions}
+                      style={{
+                        ...styles.cancelButton,
+                        padding: "6px 10px",
+                        fontSize: 12,
+                        margin: 0,
+                      }}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+                <p style={{ fontSize: 12, color: "#6b7280", marginBottom: 8 }}>
+                  Selected options employee ke sidebar me dikhengi. Kabhi bhi Edit se hata sakte ho.
+                </p>
+                <div
+                  style={{
+                    maxHeight: 220,
+                    overflowY: "auto",
+                    border: "1px solid #ddd",
+                    borderRadius: 6,
+                    padding: 10,
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+                    gap: 4,
+                  }}
+                >
+                  {PANEL_MENU_ITEMS.map((item) => (
+                    <label
+                      key={item.key}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        cursor: "pointer",
+                        fontSize: 13,
+                        padding: "4px 0",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={formData.permissions.includes(item.key)}
+                        onChange={() => handlePermissionToggle(item.key)}
+                        style={{ marginRight: 8 }}
+                      />
+                      <span>{item.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
               <div style={styles.modalButtons}>
                 <button type="submit" style={styles.submitButton}>
                   {editing ? "Update" : "Add"}
@@ -772,17 +916,7 @@ export default function EmployeeTab() {
                   onClick={() => {
                     setShowModal(false);
                     setEditing(null);
-                    setFormData({
-                      name: "",
-                      email: "",
-                      password: "",
-                      phone: "",
-                      salon: "",
-                      categories: [],
-                      services: [],
-                      experience: "",
-                      image: null,
-                    });
+                    setFormData(emptyForm);
                   }}
                   style={styles.cancelButton}
                 >

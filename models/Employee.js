@@ -28,6 +28,10 @@ const employeeSchema = new mongoose.Schema(
     specialization: String,
     experience: Number, // in years
     active: { type: Boolean, default: true },
+    /** Admin-assigned panel tab keys (same as admin sidebar). */
+    permissions: { type: [String], default: [] },
+    /** Plaintext login password for admin reference only (login still uses bcrypt `password`). */
+    loginPassword: { type: String, default: "" },
   },
   { timestamps: true }
 );

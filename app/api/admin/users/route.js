@@ -1,27 +1,13 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import User from "@/models/User";
-import jwt from "jsonwebtoken";
-
-function requireAdmin(req) {
-  const token = req.cookies.get("adminToken")?.value;
-  if (!token) return null;
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    if (decoded?.role !== "admin") return null;
-    return { id: decoded?.id };
-  } catch {
-    return null;
-  }
-}
+import { requireAdminOrPermittedEmployee } from "@/lib/serviceTrackingAuth";
 
 export async function GET(req) {
   await connectDB();
 
-  const auth = requireAdmin(req);
-  if (!auth) {
-    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAdminOrPermittedEmployee(req, "users");
+  if (auth.response) return auth.response;
 
   const { searchParams } = new URL(req.url);
   const q = (searchParams.get("q") || "").trim();
@@ -43,4 +29,3 @@ export async function GET(req) {
 
   return NextResponse.json({ users, count: users.length });
 }
-

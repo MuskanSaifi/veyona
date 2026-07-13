@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import WalletTransaction from "@/models/WalletTransaction";
-import { requireAdmin } from "@/lib/serviceTrackingAuth";
+import { requireAdminOrPermittedEmployee } from "@/lib/serviceTrackingAuth";
 import { parseWalletDateRange, summarizePurchases } from "@/lib/walletDateFilter";
 
 /**
@@ -10,7 +10,7 @@ import { parseWalletDateRange, summarizePurchases } from "@/lib/walletDateFilter
  */
 export async function GET(req) {
   await connectDB();
-  const auth = requireAdmin(req);
+  const auth = await requireAdminOrPermittedEmployee(req);
   if (auth.response) return auth.response;
 
   const { searchParams } = new URL(req.url);

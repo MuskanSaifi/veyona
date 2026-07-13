@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import Appointment from "@/models/Appointment";
-import { requireAdmin } from "@/lib/serviceTrackingAuth";
+import { requireAdminOrPermittedEmployee } from "@/lib/serviceTrackingAuth";
 import { buildInvoicePdfBuffer } from "@/lib/buildInvoicePdf";
 import { ensureAppointmentInvoiceNumber } from "@/lib/invoiceNumber";
 import { getInvoiceIssueDate } from "@/lib/invoiceUtils";
@@ -14,7 +14,7 @@ export const runtime = "nodejs";
 export async function GET(req, { params }) {
   await connectDB();
 
-  const auth = requireAdmin(req);
+  const auth = await requireAdminOrPermittedEmployee(req);
   if (auth.response) return auth.response;
 
   const { id } = await params;

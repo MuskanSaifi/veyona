@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import Employee from "@/models/Employee";
 import WalletTransaction, { WALLET_CATEGORIES } from "@/models/WalletTransaction";
-import { requireAdmin } from "@/lib/serviceTrackingAuth";
+import { requireAdminOrPermittedEmployee } from "@/lib/serviceTrackingAuth";
 
 /**
  * GET /api/admin/wallet/transactions
@@ -12,7 +12,7 @@ import { requireAdmin } from "@/lib/serviceTrackingAuth";
  */
 export async function GET(req) {
   await connectDB();
-  const auth = requireAdmin(req);
+  const auth = await requireAdminOrPermittedEmployee(req);
   if (auth.response) return auth.response;
 
   const { searchParams } = new URL(req.url);
@@ -48,7 +48,7 @@ export async function GET(req) {
  */
 export async function POST(req) {
   await connectDB();
-  const auth = requireAdmin(req);
+  const auth = await requireAdminOrPermittedEmployee(req);
   if (auth.response) return auth.response;
 
   let body;
