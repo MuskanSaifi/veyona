@@ -36,7 +36,20 @@ export default function EmployeeTab() {
   const [receivedLoading, setReceivedLoading] = useState(false);
 
   const fetchEmployees = async () => {
-    const res = await fetch("/api/employee");
+    const res = await fetch("/api/admin/employees", {
+      cache: "no-store",
+      credentials: "include",
+    });
+    if (!res.ok) {
+      // Fallback for older sessions
+      const fallback = await fetch("/api/employee", {
+        cache: "no-store",
+        credentials: "include",
+      });
+      const data = await fallback.json();
+      setEmployees(Array.isArray(data) ? data : []);
+      return;
+    }
     const data = await res.json();
     setEmployees(Array.isArray(data) ? data : []);
   };

@@ -52,36 +52,42 @@ export async function PUT(req, { params }) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    const updateData = {};
-    if (name) updateData.name = name;
-    if (email) updateData.email = email;
-    if (phone) updateData.phone = phone;
+    if (name) employee.name = name;
+    if (email) employee.email = email;
+    if (phone) employee.phone = phone;
     if (salon !== null && salon !== undefined) {
       const trimmed = String(salon).trim();
-      updateData.salon = trimmed ? trimmed : null;
+      employee.salon = trimmed ? trimmed : null;
     }
-    if (experience) updateData.experience = parseInt(experience);
-    if (active !== null && active !== undefined) updateData.active = active === "true";
+    if (experience) employee.experience = parseInt(experience);
+    if (active !== null && active !== undefined) {
+      employee.active = active === "true";
+    }
 
     if (categories !== null && categories !== "null") {
-      updateData.categories = categories.split(",").filter((id) => id.trim());
+      employee.categories = String(categories)
+        .split(",")
+        .filter((cid) => cid.trim());
     }
 
     if (services !== null && services !== "null") {
-      updateData.services = services.split(",").filter((id) => id.trim());
+      employee.services = String(services)
+        .split(",")
+        .filter((sid) => sid.trim());
     }
 
     if (permissionsRaw !== null && permissionsRaw !== undefined) {
-      updateData.permissions = sanitizePermissions(permissionsRaw);
+      employee.permissions = sanitizePermissions(permissionsRaw);
     }
 
-    if (password && String(password).trim().length >= 6) {
-      const plainPassword = String(password).trim();
-      updateData.password = await bcrypt.hash(plainPassword, 10);
-      updateData.loginPassword = plainPassword;
+    const plainPassword = password != null ? String(password).trim() : "";
+    if (plainPassword.length >= 6) {
+      employee.password = await bcrypt.hash(plainPassword, 10);
+      employee.loginPassword = plainPassword;
+      employee.markModified("loginPassword");
     }
 
-    if (file && file !== "null") {
+    if (file && file !== "null" && typeof file.arrayBuffer === "function") {
       if (employee.public_id) {
         await cloudinary.uploader.destroy(employee.public_id);
       }
@@ -96,20 +102,21 @@ export async function PUT(req, { params }) {
           }
         ).end(buffer);
       });
-      updateData.image = upload.secure_url;
-      updateData.public_id = upload.public_id;
+      employee.image = upload.secure_url;
+      employee.public_id = upload.public_id;
     }
 
-    const updated = await Employee.findByIdAndUpdate(id, updateData, {
-      new: true,
-    })
+    await employee.save();
+
+    const updated = await Employee.findById(id)
       .select("-password")
       .populate("salon")
       .populate("categories")
       .populate("services");
 
+    const includeLoginPassword = isAdminRequest(req);
     return NextResponse.json(
-      stripSecrets(updated, { includeLoginPassword: isAdminRequest(req) })
+      stripSecrets(updated, { includeLoginPassword })
     );
   } catch (error) {
     return NextResponse.json(
