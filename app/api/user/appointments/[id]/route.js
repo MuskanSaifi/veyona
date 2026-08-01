@@ -5,6 +5,8 @@ import { saveAppointmentDoc } from "@/lib/saveAppointmentDoc";
 import User from "@/models/User";
 import jwt from "jsonwebtoken";
 import { sendWhatsAppTemplate } from "@/lib/whatsapp";
+import { getTemplateEnv } from "@/lib/whatsappEnv";
+import { KRAYA_VARS, krayaVars } from "@/lib/krayaTemplateVars";
 import { getCustomerIdsForUser } from "@/lib/customerLookup";
 
 export async function PUT(req, { params }) {
@@ -73,20 +75,26 @@ export async function PUT(req, { params }) {
         if (Date.now() > deadline) {
           // Notify admin that user attempted a late cancel
           const adminPhone = process.env.ADMIN_WHATSAPP_PHONE || process.env.ADMIN_PHONE;
-          const adminTemplate =
-            process.env.INTERAKT_TEMPLATE_ADMIN_LATE_CANCEL_ATTEMPT ||
-            "transactional_admin_late_cancel_attempt";
+          const adminTemplate = getTemplateEnv(
+            "ADMIN_LATE_CANCEL_ATTEMPT",
+            "transactional_admin_late_cancel_attempt"
+          );
           if (adminPhone) {
             const bookingId = appointment._id.toString().slice(-6).toUpperCase();
             const customerName = user?.name || "Customer";
             const customerPhone = customers?.[0]?.phone || user?.phone || "";
             const mins = Math.max(0, Math.floor((Date.now() - createdAt.getTime()) / (60 * 1000)));
-            sendWhatsAppTemplate(adminPhone, adminTemplate, [
-              bookingId,
-              customerName,
-              customerPhone ? String(customerPhone) : "N/A",
-              `${mins} min`,
-            ]).catch((err) =>
+            sendWhatsAppTemplate(
+              adminPhone,
+              adminTemplate,
+              krayaVars({
+                [KRAYA_VARS.BOOKING_ID]: bookingId,
+                [KRAYA_VARS.LEAD_NAME]: customerName,
+                [KRAYA_VARS.REFUND_NOTE]: customerPhone
+                  ? `${customerPhone} · ${mins} min late`
+                  : `${mins} min late`,
+              })
+            ).catch((err) =>
               console.error("WhatsApp admin late-cancel attempt failed:", err)
             );
           }
@@ -125,28 +133,38 @@ export async function PUT(req, { params }) {
       await saveAppointmentDoc(appointment);
 
       const adminPhone = process.env.ADMIN_WHATSAPP_PHONE || process.env.ADMIN_PHONE;
-      const adminTemplate =
-        process.env.INTERAKT_TEMPLATE_ADMIN_REFUND_PENDING ||
-        "transactional_admin_refund_pending";
+      const adminTemplate = getTemplateEnv(
+        "ADMIN_REFUND_PENDING",
+        "transactional_admin_refund_pending"
+      );
       if (adminPhone) {
         const bookingId = appointment._id.toString().slice(-6).toUpperCase();
         const customerName = user?.name || "Customer";
         const refundLabel = refundRequired ? "Refund required" : "No refund required";
-        sendWhatsAppTemplate(adminPhone, adminTemplate, [bookingId, customerName, refundLabel]).catch(
-          (err) => console.error("WhatsApp admin cancellation alert failed:", err)
-        );
+        sendWhatsAppTemplate(
+          adminPhone,
+          adminTemplate,
+          krayaVars({
+            [KRAYA_VARS.BOOKING_ID]: bookingId,
+            [KRAYA_VARS.LEAD_NAME]: customerName,
+            [KRAYA_VARS.REFUND_NOTE]: refundLabel,
+          })
+        ).catch((err) => console.error("WhatsApp admin cancellation alert failed:", err));
       }
 
       if (customer?.phone || user?.phone) {
-        const userTemplate =
-          process.env.INTERAKT_TEMPLATE_USER_CANCELLATION_REFUND ||
-          "transactional_user_cancellation_refund";
+        const userTemplate = getTemplateEnv(
+          "USER_CANCELLATION_REFUND",
+          "transactional_user_cancellation_refund"
+        );
         const dueText = refundRequired
           ? "Refund will be processed within 24 hours."
           : "No online refund is required for this booking.";
-        sendWhatsAppTemplate(customer?.phone || user?.phone, userTemplate, [dueText]).catch((err) =>
-          console.error("WhatsApp user cancellation alert failed:", err)
-        );
+        sendWhatsAppTemplate(
+          customer?.phone || user?.phone,
+          userTemplate,
+          krayaVars({ [KRAYA_VARS.REFUND_NOTE]: dueText })
+        ).catch((err) => console.error("WhatsApp user cancellation alert failed:", err));
       }
 
       return NextResponse.json({

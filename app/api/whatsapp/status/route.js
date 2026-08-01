@@ -1,16 +1,25 @@
 import { NextResponse } from "next/server";
+import { getKrayaApiKey } from "@/lib/whatsappEnv";
 
 /**
  * GET /api/whatsapp/status
- * Returns whether WhatsApp (Interakt) is configured on this environment.
- * Use on live to verify INTERAKT_API_KEY is set. Does not expose the key.
+ * Returns whether WhatsApp (Kraya) is configured. Does not expose secrets.
  */
 export async function GET() {
-  const configured =
-    typeof process.env.INTERAKT_API_KEY === "string" &&
-    process.env.INTERAKT_API_KEY.trim().length > 0;
+  const apiKey = getKrayaApiKey();
+  const sendUrl =
+    process.env.KRAYA_WHATSAPP_SEND_URL?.trim() ||
+    (process.env.KRAYA_LEADS_URL?.trim() &&
+    /\/leads\/?$/i.test(process.env.KRAYA_LEADS_URL)
+      ? process.env.KRAYA_LEADS_URL.replace(/\/leads\/?$/i, "/whatsapp/template")
+      : "");
+  const leadsUrl = process.env.KRAYA_LEADS_URL?.trim() || "";
+
   return NextResponse.json({
-    whatsappConfigured: configured,
+    provider: "kraya",
+    whatsappConfigured: Boolean(apiKey && sendUrl),
+    leadsConfigured: Boolean(apiKey && leadsUrl),
+    sendUrlConfigured: Boolean(sendUrl),
     env: process.env.NODE_ENV || "development",
   });
 }

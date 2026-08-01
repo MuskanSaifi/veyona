@@ -36,23 +36,23 @@ pending  ──verify-otp──▶  in_progress  ──end-service──▶  com
 Added in `.env`:
 
 ```env
-INTERAKT_TEMPLATE_SERVICE_OTP=service_otp
-INTERAKT_TEMPLATE_SERVICE_FEEDBACK=service_feedback
+KRAYA_TEMPLATE_SERVICE_OTP=service_otp_auth
+KRAYA_TEMPLATE_SERVICE_FEEDBACK=service_feedback
 # Optional — only set if the feedback template uses a dynamic URL button
-INTERAKT_FEEDBACK_BUTTON_INDEX=
+KRAYA_FEEDBACK_BUTTON_INDEX=
 # Used to build the absolute feedback URL sent to WhatsApp
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
-`INTERAKT_API_KEY` is already configured for the project.
+`KRAYA_API_KEY` must be configured (see `docs/WHATSAPP_LIVE_SETUP.md`).
 
 ---
 
-## 3. Interakt WhatsApp templates
+## 3. Kraya WhatsApp templates
 
-Create these two templates in the [Interakt dashboard](https://app.interakt.ai/)
-under **Templates → Create new** (Category: Transactional / Utility) and
-get them approved.
+Create these two templates in the [Kraya dashboard](https://kraya-ai.com/dashboard)
+under **WhatsApp → Templates** (Category: Utility / Authentication) and
+get them Meta-approved.
 
 ### a) OTP template — name `service_otp`
 
@@ -71,7 +71,7 @@ get them approved.
 
 If you instead use a CTA URL button with a dynamic suffix (recommended,
 since WhatsApp limits raw URLs in the body), put the URL button's index
-(usually `0`) into `INTERAKT_FEEDBACK_BUTTON_INDEX`. The helper will
+(usually `0`) into `KRAYA_FEEDBACK_BUTTON_INDEX`. The helper will
 then send the visit's path suffix (`feedback/<id>`) via `buttonValues`.
 
 ---

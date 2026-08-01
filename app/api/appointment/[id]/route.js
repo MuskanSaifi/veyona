@@ -5,8 +5,10 @@ import Customer from "@/models/Customer";
 import mongoose from "mongoose";
 import { saveAppointmentDoc } from "@/lib/saveAppointmentDoc";
 import { sendWhatsAppTemplate } from "@/lib/whatsapp";
+import { getTemplateEnv, envWhatsApp } from "@/lib/whatsappEnv";
+import { KRAYA_VARS, krayaVars } from "@/lib/krayaTemplateVars";
 import { sendPaidInvoiceEmailIfNeeded } from "@/lib/billingEmail";
-import { sendServiceOtpWhatsApp, sendFeedbackRequestWhatsApp } from "@/lib/serviceWhatsapp";
+import { sendServiceOtp, sendFeedbackRequestWhatsApp } from "@/lib/serviceWhatsapp";
 import {
   applyRescheduleServicesAndPricing,
   buildServicesPayloadFromLineItems,
@@ -130,14 +132,15 @@ export async function PUT(req, { params }) {
         appointment.serviceOtpVerifiedAt = undefined;
         appointment.serviceOtpAttempts = 0;
         await saveAppointmentDoc(appointment);
-        const whatsapp = await sendServiceOtpWhatsApp(customer.phone, code);
+        const delivery = await sendServiceOtp(customer.phone, code);
         return NextResponse.json({
           success: true,
-          message: whatsapp?.success
-            ? "OTP sent to customer on WhatsApp"
-            : whatsapp?.message || "OTP generated but WhatsApp failed",
+          message: delivery?.success
+            ? delivery.message || "OTP sent to customer"
+            : delivery?.message || "OTP generated but send failed",
           otpExpiresAt: appointment.serviceOtpExpiresAt,
-          whatsapp,
+          otpDelivery: delivery,
+          whatsapp: delivery.whatsapp,
         });
       }
 
@@ -413,7 +416,10 @@ export async function PUT(req, { params }) {
       .populate("service");
 
     // When admin first confirms: send WhatsApp template to user (e.g. "Your Booking is Confirmed!")
-    const userTemplateName = process.env.INTERAKT_TEMPLATE_BOOKING_CONFIRMED || "transactional_booking_confirmation";
+    const userTemplateName = getTemplateEnv(
+      "BOOKING_CONFIRMED",
+      "transactional_booking_confirmation"
+    );
     if (status === "confirmed" && !wasConfirmed && updated.employee && updated.customer?.phone) {
       const dateStr = new Date(updated.date).toLocaleDateString("en-IN", {
         weekday: "short",
@@ -430,16 +436,24 @@ export async function PUT(req, { params }) {
         servicesArray.length > 1
           ? `${primaryServiceName} + ${servicesArray.length - 1} more`
           : primaryServiceName;
-      // Template placeholders: {{1}} = service(s) + date, {{2}} = time
+      // Template chips: Service Interested In + Appointment Date (date+time combined)
       sendWhatsAppTemplate(
         updated.customer.phone,
         userTemplateName,
-        [`${servicesLabel} on ${dateStr}`, timeStr]
+        krayaVars({
+          [KRAYA_VARS.SERVICE]: servicesLabel,
+          [KRAYA_VARS.APPOINTMENT_DATE]: timeStr
+            ? `${dateStr} at ${timeStr}`
+            : dateStr,
+        })
       ).catch((err) => console.error("WhatsApp booking confirm failed:", err));
     }
 
     // Notify employee when confirmed (transactional_employee_assign)
-    const employeeTemplate = process.env.INTERAKT_TEMPLATE_EMPLOYEE_ASSIGN || "transactional_employee_assign";
+    const employeeTemplate = getTemplateEnv(
+      "EMPLOYEE_ASSIGN",
+      "transactional_employee_assign"
+    );
     if (status === "confirmed" && !wasConfirmed && updated.employee?.phone) {
       const dateStr = new Date(updated.date).toLocaleDateString("en-IN", {
         weekday: "short",
@@ -457,9 +471,11 @@ export async function PUT(req, { params }) {
         .filter(Boolean)
         .join(", ");
       const clientLabel = servicesText ? `${clientName} – ${servicesText}` : clientName;
-      // Optional: Interakt template with dynamic URL on button index N — suffix only (e.g. "e" → https://domain/e).
-      const btnIdxRaw = process.env.INTERAKT_EMPLOYEE_ASSIGN_URL_BUTTON_INDEX;
-      const btnPath = (process.env.INTERAKT_EMPLOYEE_ASSIGN_URL_PATH || "e").replace(/^\//, "");
+      // Optional: dynamic URL button — suffix only (e.g. "e" → https://domain/e).
+      const btnIdxRaw = envWhatsApp("EMPLOYEE_ASSIGN_URL_BUTTON_INDEX");
+      const btnPath = (
+        envWhatsApp("EMPLOYEE_ASSIGN_URL_PATH", "e") || "e"
+      ).replace(/^\//, "");
       const templateExtra =
         btnIdxRaw !== undefined && String(btnIdxRaw).trim() !== ""
           ? { buttonValues: { [String(btnIdxRaw).trim()]: [btnPath] } }
@@ -467,7 +483,13 @@ export async function PUT(req, { params }) {
       sendWhatsAppTemplate(
         updated.employee.phone,
         employeeTemplate,
-        [clientLabel, dateStr, timeStr],
+        krayaVars({
+          [KRAYA_VARS.LEAD_NAME]: clientLabel,
+          [KRAYA_VARS.SERVICE]: servicesText || "",
+          [KRAYA_VARS.APPOINTMENT_DATE]: timeStr
+            ? `${dateStr} at ${timeStr}`
+            : dateStr,
+        }),
         templateExtra
       ).catch((err) => console.error("WhatsApp employee assign failed:", err));
     }

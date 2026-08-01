@@ -7,6 +7,9 @@ import User from "@/models/User";
 import Coupon from "@/models/Coupon";
 import jwt from "jsonwebtoken";
 import { sendWhatsAppTemplate } from "@/lib/whatsapp";
+import { getTemplateEnv } from "@/lib/whatsappEnv";
+import { upsertKrayaLead, leadFromAppointment } from "@/lib/krayaLeads";
+import { KRAYA_VARS, krayaVars } from "@/lib/krayaTemplateVars";
 import { escapeRegex } from "@/lib/customerLookup";
 import { computeOrderTotals } from "@/lib/cartPricing";
 import { resolveSalonForBooking } from "@/lib/bookingSalon";
@@ -397,30 +400,49 @@ export async function POST(req) {
       .filter(Boolean)
       .join(", ");
 
+    // Sync lead to Kraya CRM (documented Leads API)
+    upsertKrayaLead(leadFromAppointment(populated)).catch((err) =>
+      console.error("Kraya lead upsert failed:", err)
+    );
+
     // Notify user instantly that booking request is received
-    // Template placeholders expected: {{1}} = customer name, {{2}} = service names
-    // NOTE: Interakt expects the exact template name from the dashboard. The
-    // correct default for this app is `transactional_booking_received_xp`.
-    const userTemplate =
-      process.env.INTERAKT_TEMPLATE_BOOKING_RECEIVED || "transactional_booking_received_xp";
+    // Template placeholders: {{1}} = customer name, {{2}} = service names
+    const userTemplate = getTemplateEnv(
+      "BOOKING_RECEIVED",
+      "transactional_booking_received_xp"
+    );
     if (populated.customer?.phone) {
       const customerLabel = customerName || populated.customer?.name || "Customer";
       const serviceLabel = servicesText || populated.service?.name || "your selected service";
-      sendWhatsAppTemplate(populated.customer.phone, userTemplate, [customerLabel, serviceLabel]).catch((err) =>
-        console.error("WhatsApp booking received failed:", err)
-      );
+      sendWhatsAppTemplate(
+        populated.customer.phone,
+        userTemplate,
+        krayaVars({
+          [KRAYA_VARS.LEAD_NAME]: customerLabel,
+          [KRAYA_VARS.SERVICE]: serviceLabel,
+        })
+      ).catch((err) => console.error("WhatsApp booking received failed:", err));
     }
 
-    // Notify admin on WhatsApp about new appointment (transactional_admin_new_appointment)
+    // Notify admin on WhatsApp about new appointment
     const adminPhone = process.env.ADMIN_WHATSAPP_PHONE || process.env.ADMIN_PHONE;
-    const adminTemplate = process.env.INTERAKT_TEMPLATE_ADMIN_NEW_APPOINTMENT || "transactional_admin_new_appointment";
+    const adminTemplate = getTemplateEnv(
+      "ADMIN_NEW_APPOINTMENT",
+      "transactional_admin_new_appointment"
+    );
     if (adminPhone) {
       const bookingId = appointment._id.toString().slice(-6).toUpperCase();
       const customerBase = customerName || populated.customer?.name || "Customer";
-      const customerLabel = servicesText ? `${customerBase} – ${servicesText}` : customerBase;
-      sendWhatsAppTemplate(adminPhone, adminTemplate, [bookingId, customerLabel]).catch((err) =>
-        console.error("WhatsApp admin new appointment failed:", err)
-      );
+      sendWhatsAppTemplate(
+        adminPhone,
+        adminTemplate,
+        krayaVars({
+          [KRAYA_VARS.LEAD_NAME]: customerBase,
+          [KRAYA_VARS.SERVICE]: servicesText
+            ? `Booking ${bookingId} · ${servicesText}`
+            : `Booking ${bookingId}`,
+        })
+      ).catch((err) => console.error("WhatsApp admin new appointment failed:", err));
     }
 
     return NextResponse.json(populated);

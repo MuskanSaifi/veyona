@@ -4,7 +4,7 @@ import ServiceVisit from "@/models/ServiceVisit";
 import Customer from "@/models/Customer";
 import Otp from "@/models/Otp";
 import { requireEmployee } from "@/lib/serviceTrackingAuth";
-import { sendServiceOtpWhatsApp } from "@/lib/serviceWhatsapp";
+import { sendServiceOtp } from "@/lib/serviceWhatsapp";
 
 const OTP_TTL_MINUTES = 5;
 
@@ -68,12 +68,13 @@ export async function POST(req) {
   const expiresAt = new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000);
   await Otp.create({ serviceVisit: visit._id, code, expiresAt });
 
-  const wa = await sendServiceOtpWhatsApp(customer.phone, code);
+  const delivery = await sendServiceOtp(customer.phone, code);
 
   return NextResponse.json({
     success: true,
     serviceId: visit._id,
     otpExpiresAt: expiresAt,
-    whatsapp: wa,
+    otpDelivery: delivery,
+    whatsapp: delivery.whatsapp,
   });
 }

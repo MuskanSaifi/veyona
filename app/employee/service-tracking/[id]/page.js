@@ -153,7 +153,7 @@ export default function ServiceVisitDetailPage() {
         toast.error(data.message || "Could not resend OTP");
         return;
       }
-      toast.success("New OTP sent on WhatsApp");
+      toast.success("New OTP sent on SMS");
       setOtpDigits(["", "", "", ""]);
       setOtpExpiresAt(data.otpExpiresAt);
     } catch {
@@ -284,7 +284,7 @@ function PendingOtpPanel({
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-6">
       <h2 className="text-lg font-semibold text-slate-800 mb-1">Verify OTP</h2>
       <p className="text-sm text-slate-500 mb-4">
-        Ask the customer for the 4-digit OTP they received on WhatsApp.
+        Ask the customer for the 4-digit OTP they received on SMS.
       </p>
 
       <div className="flex items-center justify-center gap-3 mb-4">

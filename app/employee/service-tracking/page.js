@@ -117,7 +117,7 @@ export default function EmployeeServiceTrackingPage() {
         }
         return;
       }
-      toast.success("OTP sent to customer on WhatsApp");
+      toast.success("OTP sent to customer on SMS");
       router.push(`/employee/service-tracking/${data.serviceId}`);
     } catch {
       toast.error("Network error");
@@ -142,7 +142,7 @@ export default function EmployeeServiceTrackingPage() {
           <FaUserClock className="text-blue-600" /> Service time tracking
         </h1>
         <p className="text-slate-500 mb-8">
-          Start a customer visit with WhatsApp OTP verification and record service duration.
+          Start a customer visit with SMS OTP verification and record service duration.
         </p>
 
         {activeVisit ? (
@@ -213,7 +213,7 @@ function NewVisitForm({ form, setForm, onSubmit, submitting }) {
           />
         </Field>
 
-        <Field label="Customer WhatsApp phone *">
+        <Field label="Customer phone *">
           <input
             type="tel"
             value={form.phone}

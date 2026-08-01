@@ -5,7 +5,7 @@ import Customer from "@/models/Customer";
 import ServiceVisit from "@/models/ServiceVisit";
 import Otp from "@/models/Otp";
 import { requireEmployee } from "@/lib/serviceTrackingAuth";
-import { sendServiceOtpWhatsApp } from "@/lib/serviceWhatsapp";
+import { sendServiceOtp } from "@/lib/serviceWhatsapp";
 
 const OTP_TTL_MINUTES = 5;
 
@@ -26,7 +26,7 @@ function normalizePhone(input) {
  *   { customer: { name, phone, email?, address? }, serviceLabel? }
  *
  * Creates a ServiceVisit in `pending` state, generates a 4-digit OTP
- * (valid for 5 minutes) and sends it to the customer via WhatsApp.
+ * (valid for 5 minutes) and sends it to the customer via SMS (default).
  * Returns the serviceVisitId and the OTP expiry timestamp.
  */
 export async function POST(req) {
@@ -125,8 +125,8 @@ export async function POST(req) {
     expiresAt,
   });
 
-  // Fire-and-await the WhatsApp send so we can surface configuration errors
-  const wa = await sendServiceOtpWhatsApp(customer.phone, code);
+  // Fire-and-await send so we can surface configuration errors (SMS by default)
+  const delivery = await sendServiceOtp(customer.phone, code);
 
   return NextResponse.json({
     success: true,
@@ -138,6 +138,7 @@ export async function POST(req) {
       phone: customer.phone,
     },
     otpExpiresAt: expiresAt,
-    whatsapp: wa,
+    otpDelivery: delivery,
+    whatsapp: delivery.whatsapp,
   });
 }

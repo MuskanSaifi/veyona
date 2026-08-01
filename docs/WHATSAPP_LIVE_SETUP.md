@@ -1,52 +1,48 @@
-# WhatsApp Messages on Live / Production
+# WhatsApp Messages on Live / Production (Kraya)
 
 Agar localhost pe WhatsApp msg aa rahe hain lekin **live/production** pe nahi aa rahe, ye steps check karein.
 
-## 1. Production pe Environment Variables set karein
-
-Jahan bhi app deploy hai (Vercel, Railway, Render, cPanel, etc.), wahan **Environment Variables** me ye add karein (values apni `.env` jaisi hi use karein):
+## 1. Production pe Environment Variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `INTERAKT_API_KEY` | Yes | Interakt Dashboard → Developer Settings → API Key (same as local .env) |
-| `ADMIN_WHATSAPP_PHONE` | Yes | 10-digit number jisko new booking alert bhejna hai (e.g. 9643685727) |
-| `ADMIN_PHONE` | Optional | Fallback agar ADMIN_WHATSAPP_PHONE na ho |
-| `INTERAKT_TEMPLATE_BOOKING_CONFIRMED` | Optional | Default: `transactional_booking_confirmation` |
-| `INTERAKT_TEMPLATE_ADMIN_NEW_APPOINTMENT` | Optional | Default: `transactional_admin_new_appointment` |
-| `INTERAKT_TEMPLATE_EMPLOYEE_ASSIGN` | Optional | Default: `transactional_employee_assign` |
-| `INTERAKT_HEADER_IMAGE_URL` | Optional | Agar template me header image use ho |
+| `KRAYA_API_KEY` | Yes | Kraya Dashboard → API → API Key |
+| `KRAYA_LEADS_URL` | Yes | Leads upsert URL from API page |
+| `KRAYA_WHATSAPP_SEND_URL` | Yes* | Template send endpoint (confirm with Kraya) |
+| `KRAYA_WEBHOOK_SECRET` | Recommended | Same secret as Kraya Webhooks page |
+| `ADMIN_WHATSAPP_PHONE` | Yes | 10-digit admin WhatsApp number |
+| `KRAYA_TEMPLATE_BOOKING_CONFIRMED` | Optional | Default: `transactional_booking_confirmation` |
+| `KRAYA_TEMPLATE_ADMIN_NEW_APPOINTMENT` | Optional | Default: `transactional_admin_new_appointment` |
+| `KRAYA_TEMPLATE_EMPLOYEE_ASSIGN` | Optional | Default: `transactional_employee_assign` |
+| `KRAYA_HEADER_IMAGE_URL` | Optional | Global fallback for IMAGE headers |
+
+\* If `KRAYA_WHATSAPP_SEND_URL` is empty, the app tries to derive  
+`…/whatsapp/template` from `KRAYA_LEADS_URL`. Confirm this path with Kraya support.
 
 **Important:**  
-- `INTERAKT_API_KEY` **server-side** use hota hai (API routes), isliye **NEXT_PUBLIC_** mat lagana.  
-- Deploy ke baad **redeploy** ya **restart** karein taaki naye env vars load hon.
+- Keys are **server-side** only — do **not** use `NEXT_PUBLIC_`.  
+- After setting env vars, **redeploy / restart**.
 
-## 2. Vercel pe kaise add karein
+Legacy `INTERAKT_*` vars still work as fallback during migration, but prefer `KRAYA_*`.
 
-1. Project → **Settings** → **Environment Variables**
-2. Add: Name = `INTERAKT_API_KEY`, Value = (apna key), Environment = Production (aur Preview agar chahiye)
-3. Same `ADMIN_WHATSAPP_PHONE` add karein
-4. **Redeploy** (Deployments → ... → Redeploy)
+## 2. Webhook (production)
 
-## 3. Railway / Render / Other
+Kraya → Webhooks:
 
-- Project **Settings** / **Environment** me same variables add karein
-- Save ke baad app **restart** / **redeploy** karein
+- URL: `https://veyona.in/api/webhooks/kraya`
+- Secret: same as `KRAYA_WEBHOOK_SECRET`
+- Enable + Save
 
-## 4. Interakt Dashboard
+## 3. Debug
 
-- Same WhatsApp number / channel jo local pe use kar rahe ho, production ke liye bhi allowed hona chahiye
-- API key **server-side** use ho raha hai, isliye "localhost vs live" ka koi alag setting Interakt me nahi hoti – sirf API key sahi hona chahiye
+1. `GET /api/whatsapp/status` → `whatsappConfigured: true`, `provider: "kraya"`
+2. `GET /api/whatsapp/test?phone=XXXXXXXXXX` → test send
+3. Logs: `"Kraya WhatsApp error"` / `"WhatsApp send URL not configured"`
+4. New booking → check lead appears in Kraya CRM
 
-## 5. Debug (optional)
+## Short checklist
 
-Agar phir bi msg na aaye to production logs check karein:
-
-- Booking confirm hone par ya new appointment create hone par log me `"WhatsApp admin new appointment failed"` ya `"Interakt WhatsApp error"` dikhe to response/error message se reason pata chalega
-- Confirm karein ki production build me `INTERAKT_API_KEY` set hai (log me key mat print karein, sirf "WhatsApp not configured" ya error message dekhen)
-
----
-
-**Short checklist:**  
-1. Production env me `INTERAKT_API_KEY` + `ADMIN_WHATSAPP_PHONE` set hai?  
-2. Deploy/restart kiya?  
-3. Same API key local .env jaisa hai?
+1. Production me `KRAYA_API_KEY` + send URL + `ADMIN_WHATSAPP_PHONE` set?
+2. Templates Meta-approved in Kraya WhatsApp?
+3. Deploy/restart kiya?
+4. Webhook URL production domain pe point karta hai?

@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { sendWhatsAppTemplate } from "@/lib/whatsapp";
+import { getTemplateEnv } from "@/lib/whatsappEnv";
+import { KRAYA_VARS, krayaVars } from "@/lib/krayaTemplateVars";
 
 /**
- * GET /api/whatsapp/test?phone=XXXXXXXXXX&template=transactional_booking_received_xp
- * Sends a live template message for quick Interakt/API verification.
+ * GET /api/whatsapp/test?phone=XXXXXXXXXX&template=transactional_booking_received
  */
 export async function GET(req) {
   try {
@@ -14,17 +15,23 @@ export async function GET(req) {
       process.env.ADMIN_PHONE;
     const template =
       searchParams.get("template") ||
-      process.env.INTERAKT_TEMPLATE_BOOKING_RECEIVED ||
-      "transactional_booking_received_xp";
+      getTemplateEnv("BOOKING_RECEIVED", "transactional_booking_received");
 
     if (!phone) {
       return NextResponse.json(
-        { message: "Missing phone. Pass ?phone=XXXXXXXXXX or set ADMIN_WHATSAPP_PHONE." },
+        {
+          message:
+            "Missing phone. Pass ?phone=XXXXXXXXXX or set ADMIN_WHATSAPP_PHONE.",
+        },
         { status: 400 }
       );
     }
 
-    const result = await sendWhatsAppTemplate(phone, template, ["Test User", "Haircut"]);
+    const vars = krayaVars({
+      [KRAYA_VARS.LEAD_NAME]: "Test User",
+      [KRAYA_VARS.SERVICE]: "Haircut",
+    });
+    const result = await sendWhatsAppTemplate(phone, template, vars);
 
     if (!result.success) {
       return NextResponse.json(
@@ -33,6 +40,8 @@ export async function GET(req) {
           message: result.message || "WhatsApp send failed",
           phone,
           template,
+          provider: "kraya",
+          variables: vars,
         },
         { status: 502 }
       );
@@ -40,10 +49,11 @@ export async function GET(req) {
 
     return NextResponse.json({
       success: true,
-      message: "Test template sent",
+      message: "Test template sent via Kraya",
       phone,
       template,
-      bodyValues: ["Test User", "Haircut"],
+      provider: "kraya",
+      variables: vars,
     });
   } catch (error) {
     return NextResponse.json(
