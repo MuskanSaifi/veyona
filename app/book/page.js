@@ -15,7 +15,9 @@ import {
   getIndianStates,
   getStateByName,
   getCitiesForStateCode,
+  lookupPincode,
 } from "@/lib/indiaLocations";
+import SearchableSelect from "@/app/components/SearchableSelect";
 import styles from "./book.module.css";
 
 const BOOK_SERVICE_PLACEHOLDER_IMG =
@@ -90,6 +92,8 @@ function BookPageContent() {
   const [user, setUser] = useState(null);
   const [razorpayReady, setRazorpayReady] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
+  const [pincodeChecking, setPincodeChecking] = useState(false);
+  const [pincodeStatus, setPincodeStatus] = useState(null); // { type: "success" | "error", text: string }
 
   const indianStates = useMemo(() => getIndianStates(), []);
 
@@ -123,6 +127,41 @@ function BookPageContent() {
     setFormData((prev) => ({ ...prev, ...dataOverride, location: full }));
   };
 
+  const handlePincodeChange = async (rawVal) => {
+    const pin = rawVal.replace(/\D/g, "").slice(0, 6);
+    recomputeLocation({ pincode: pin });
+    setPincodeStatus(null);
+
+    if (pin.length === 6) {
+      setPincodeChecking(true);
+      try {
+        const result = await lookupPincode(pin);
+        if (result?.success && result.state) {
+          const autoState = result.state;
+          const autoCity = result.city || result.district || "";
+          recomputeLocation({
+            pincode: pin,
+            state: autoState,
+            city: autoCity,
+          });
+          setPincodeStatus({
+            type: "success",
+            text: `Verified: ${autoCity ? `${autoCity}, ` : ""}${autoState}`,
+          });
+        } else {
+          setPincodeStatus({
+            type: "error",
+            text: result?.message || "Could not find pincode details",
+          });
+        }
+      } catch (e) {
+        console.error("Pincode check error:", e);
+      } finally {
+        setPincodeChecking(false);
+      }
+    }
+  };
+
   const applyMapSelection = ({ location, parts }) => {
     const safe = parts || {};
     recomputeLocation({
@@ -132,6 +171,12 @@ function BookPageContent() {
       state: safe.state || "",
       pincode: (safe.pincode || "").replace(/\D/g, "").slice(0, 6),
     });
+    if (safe.pincode) {
+      setPincodeStatus({
+        type: "success",
+        text: `Map location: ${[safe.city, safe.state].filter(Boolean).join(", ")}`,
+      });
+    }
   };
 
   useEffect(() => {
@@ -1154,67 +1199,65 @@ function BookPageContent() {
                     value={formData.pincode}
                     maxLength={6}
                     inputMode="numeric"
-                    onChange={(e) =>
-                      recomputeLocation({
-                        pincode: e.target.value.replace(/\D/g, ""),
-                      })
-                    }
+                    placeholder="Enter 6-digit pincode"
+                    onChange={(e) => handlePincodeChange(e.target.value)}
                     style={inputStyle}
                     required={needsStructuredCustomerAddress}
                   />
+                  {pincodeChecking && (
+                    <span style={{ fontSize: 12, color: "#2563eb", marginTop: 4, display: "inline-block" }}>
+                      Auto-detecting state & city...
+                    </span>
+                  )}
+                  {!pincodeChecking && pincodeStatus?.type === "success" && (
+                    <span style={{ fontSize: 12, color: "#16a34a", marginTop: 4, display: "inline-block", fontWeight: 500 }}>
+                      ✓ {pincodeStatus.text}
+                    </span>
+                  )}
+                  {!pincodeChecking && pincodeStatus?.type === "error" && (
+                    <span style={{ fontSize: 12, color: "#dc2626", marginTop: 4, display: "inline-block" }}>
+                      {pincodeStatus.text}
+                    </span>
+                  )}
                 </div>
                 <div>
                   <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: 500 }}>
                     State{needsStructuredCustomerAddress ? " *" : ""}
                   </label>
-                  <select
+                  <SearchableSelect
+                    options={indianStates.map((s) => ({ label: s.name, value: s.isoCode, name: s.name }))}
                     value={selectedStateCode}
-                    onChange={(e) => {
-                      const code = e.target.value;
-                      const st = indianStates.find((s) => s.isoCode === code);
+                    onChange={(code, raw) => {
+                      const st = raw?.name ? raw : indianStates.find((s) => s.isoCode === code);
                       recomputeLocation({
                         state: st?.name || "",
                         city: "",
                       });
+                      setPincodeStatus(null);
                     }}
-                    style={inputStyle}
+                    placeholder="Select or search state"
+                    searchPlaceholder="Search state..."
                     required={needsStructuredCustomerAddress}
-                  >
-                    <option value="">Select state</option>
-                    {indianStates.map((s) => (
-                      <option key={s.isoCode} value={s.isoCode}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </div>
                 <div>
                   <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: 500 }}>
-                    City{needsStructuredCustomerAddress ? " *" : ""}
+                    City / District{needsStructuredCustomerAddress ? " *" : ""}
                   </label>
-                  <select
+                  <SearchableSelect
+                    options={cityOptions}
                     value={formData.city}
-                    onChange={(e) =>
+                    onChange={(cityName) => {
                       recomputeLocation({
-                        city: e.target.value,
-                      })
-                    }
-                    style={{
-                      ...inputStyle,
-                      opacity: selectedStateCode ? 1 : 0.7,
+                        city: cityName,
+                      });
                     }}
+                    placeholder={selectedStateCode ? "Select or search city" : "Select state first"}
+                    searchPlaceholder="Search city / district..."
                     disabled={!selectedStateCode}
                     required={needsStructuredCustomerAddress}
-                  >
-                    <option value="">
-                      {selectedStateCode ? "Select city" : "Select state first"}
-                    </option>
-                    {cityOptions.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
+                    allowCustom={true}
+                  />
                 </div>
               </div>
 

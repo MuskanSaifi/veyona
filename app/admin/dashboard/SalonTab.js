@@ -1,8 +1,15 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import toast from "react-hot-toast";
 import * as styles from "./styles";
 import mobile from "./AdminMobileCards.module.css";
+import SearchableSelect from "@/app/components/SearchableSelect";
+import {
+  getIndianStates,
+  getStateByName,
+  getCitiesForStateCode,
+  lookupPincode,
+} from "@/lib/indiaLocations";
 
 export default function SalonTab() {
   const [salons, setSalons] = useState([]);
@@ -22,6 +29,43 @@ export default function SalonTab() {
     closingTime: "18:00",
     image: null,
   });
+
+  const indianStates = useMemo(() => getIndianStates(), []);
+  const selectedStateCode = useMemo(() => {
+    const st = getStateByName(formData.state);
+    return st?.isoCode || "";
+  }, [formData.state, indianStates]);
+
+  const cityOptions = useMemo(() => {
+    if (!selectedStateCode) return [];
+    const names = getCitiesForStateCode(selectedStateCode).map((c) => c.name);
+    const current = (formData.city || "").trim();
+    if (current && !names.some((n) => n.toLowerCase() === current.toLowerCase())) {
+      return [current, ...names];
+    }
+    return names;
+  }, [selectedStateCode, formData.city]);
+
+  const handlePincodeChange = async (val) => {
+    const pin = val.replace(/\D/g, "").slice(0, 6);
+    setFormData((prev) => ({ ...prev, pincode: pin }));
+
+    if (pin.length === 6) {
+      try {
+        const result = await lookupPincode(pin);
+        if (result?.success && result.state) {
+          setFormData((prev) => ({
+            ...prev,
+            pincode: pin,
+            state: result.state,
+            city: result.city || result.district || prev.city,
+          }));
+        }
+      } catch (e) {
+        console.error("Salon pincode lookup error:", e);
+      }
+    }
+  };
 
   const fetchSalons = async () => {
     const res = await fetch("/api/salon");
@@ -441,31 +485,49 @@ export default function SalonTab() {
                 rows={2}
                 required
               />
-              <div style={{ display: "flex", gap: 10 }}>
-                <input
-                  type="text"
-                  placeholder="City"
-                  value={formData.city}
-                  onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                  style={{ ...styles.inputStyle, flex: 1 }}
-                  required
-                />
-                <input
-                  type="text"
-                  placeholder="State"
-                  value={formData.state}
-                  onChange={(e) => setFormData({ ...formData, state: e.target.value })}
-                  style={{ ...styles.inputStyle, flex: 1 }}
-                  required
-                />
-                <input
-                  type="text"
-                  placeholder="Pincode"
-                  value={formData.pincode}
-                  onChange={(e) => setFormData({ ...formData, pincode: e.target.value })}
-                  style={{ ...styles.inputStyle, flex: 1 }}
-                  required
-                />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                <div>
+                  <input
+                    type="text"
+                    placeholder="Pincode (auto-fills)"
+                    value={formData.pincode}
+                    maxLength={6}
+                    onChange={(e) => handlePincodeChange(e.target.value)}
+                    style={styles.inputStyle}
+                    required
+                  />
+                </div>
+                <div>
+                  <SearchableSelect
+                    options={indianStates.map((s) => ({ label: s.name, value: s.isoCode, name: s.name }))}
+                    value={selectedStateCode}
+                    onChange={(code, raw) => {
+                      const st = raw?.name ? raw : indianStates.find((s) => s.isoCode === code);
+                      setFormData((prev) => ({
+                        ...prev,
+                        state: st?.name || "",
+                        city: "",
+                      }));
+                    }}
+                    placeholder="State"
+                    searchPlaceholder="Search state..."
+                    required
+                  />
+                </div>
+                <div>
+                  <SearchableSelect
+                    options={cityOptions}
+                    value={formData.city}
+                    onChange={(cityName) => {
+                      setFormData((prev) => ({ ...prev, city: cityName }));
+                    }}
+                    placeholder={selectedStateCode ? "City" : "Pick state"}
+                    searchPlaceholder="Search city..."
+                    disabled={!selectedStateCode}
+                    required
+                    allowCustom={true}
+                  />
+                </div>
               </div>
               <select
                 value={formData.type}

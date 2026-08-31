@@ -7,6 +7,19 @@ Isliye sirf neeche **blue chips** / custom attributes use karo.
 
 ---
 
+## Messages kaise jaate hain (Kraya support)
+
+**Direct send URL nahi hai.** Website lead upsert karti hai + `sequence` field:
+
+`POST https://api.kraya-ai.com/api/external/{slug}/leads`
+
+Us sequence me approved WhatsApp template hona chahiye.  
+Isliye templates approve ke baad **Auto Follow-ups** me sequences banao (naam `.env` ke `KRAYA_SEQUENCE_*` se match).
+
+Detail: [`WHATSAPP_LIVE_SETUP.md`](./WHATSAPP_LIVE_SETUP.md)
+
+---
+
 ## Pehle yeh karo — Custom attributes add karo
 
 Kraya me jo chips pehle se hain (`{{lead_name}}`, `{{Appointment Date}}`, `{{Service Interested In}}`) unke alawa yeh **naye custom attributes** banao taaki templates me use ho saken.

@@ -1,13 +1,15 @@
 import mongoose from "mongoose";
 
 /**
- * Per-period counter for invoice numbers.
+ * Counter for invoice numbers.
  *
- * Current scheme: calendar year-month
- *   period: "YM-2026-05"  →  invoice number  "VEY/2026-05/00001"
+ * Current scheme: Continuous global sequence across all months.
+ *   period: "GLOBAL_CONTINUOUS"  →  invoice numbers:
+ *     VEY/2026-05/00001
+ *     VEY/2026-05/00002
+ *     VEY/2026-06/00003  (continuous serial number, only month changes)
  *
- * Legacy financial-year docs ("FY-2026-27") may still exist from earlier
- * invoices; they are simply ignored by the new allocator.
+ * Legacy period keys ("YM-2026-05", "FY-2026-27") are preserved for history.
  */
 const invoiceSequenceSchema = new mongoose.Schema(
   {

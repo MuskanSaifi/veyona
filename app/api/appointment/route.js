@@ -409,7 +409,7 @@ export async function POST(req) {
     // Template placeholders: {{1}} = customer name, {{2}} = service names
     const userTemplate = getTemplateEnv(
       "BOOKING_RECEIVED",
-      "transactional_booking_received_xp"
+      "transactional_booking_received"
     );
     if (populated.customer?.phone) {
       const customerLabel = customerName || populated.customer?.name || "Customer";

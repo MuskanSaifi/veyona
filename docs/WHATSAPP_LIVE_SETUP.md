@@ -1,48 +1,79 @@
 # WhatsApp Messages on Live / Production (Kraya)
 
-Agar localhost pe WhatsApp msg aa rahe hain lekin **live/production** pe nahi aa rahe, ye steps check karein.
+## How Kraya sends WhatsApp (important)
 
-## 1. Production pe Environment Variables
+Kraya **does not** expose a public “send template by name” HTTP API (support confirmed).
+
+Messages go out like this:
+
+1. Website **upserts a lead** → `KRAYA_LEADS_URL`
+2. Request includes **`sequence`** = Auto Follow-up sequence name
+3. That sequence contains your **approved WhatsApp template** → message is sent
+
+`KRAYA_WHATSAPP_SEND_URL` is **optional** — only if Kraya later gives a direct send endpoint.  
+**Do not** put the webhook URL there.
+
+---
+
+## 1. Production environment variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `KRAYA_API_KEY` | Yes | Kraya Dashboard → API → API Key |
-| `KRAYA_LEADS_URL` | Yes | Leads upsert URL from API page |
-| `KRAYA_WHATSAPP_SEND_URL` | Yes* | Template send endpoint (confirm with Kraya) |
-| `KRAYA_WEBHOOK_SECRET` | Recommended | Same secret as Kraya Webhooks page |
-| `ADMIN_WHATSAPP_PHONE` | Yes | 10-digit admin WhatsApp number |
-| `KRAYA_TEMPLATE_BOOKING_CONFIRMED` | Optional | Default: `transactional_booking_confirmation` |
-| `KRAYA_TEMPLATE_ADMIN_NEW_APPOINTMENT` | Optional | Default: `transactional_admin_new_appointment` |
-| `KRAYA_TEMPLATE_EMPLOYEE_ASSIGN` | Optional | Default: `transactional_employee_assign` |
-| `KRAYA_HEADER_IMAGE_URL` | Optional | Global fallback for IMAGE headers |
+| `KRAYA_API_KEY` | Yes | CRM → Kraya API → API Key |
+| `KRAYA_LEADS_URL` | Yes | Leads API URL from same page |
+| `KRAYA_WEBHOOK_SECRET` | Recommended | Same as Webhooks page |
+| `ADMIN_WHATSAPP_PHONE` | Yes | Admin 10-digit number |
+| `KRAYA_SEQUENCE_*` | Recommended | Auto Follow-up sequence names |
+| `KRAYA_WHATSAPP_SEND_URL` | No | Only if Kraya provides a direct send API |
 
-\* If `KRAYA_WHATSAPP_SEND_URL` is empty, the app tries to derive  
-`…/whatsapp/template` from `KRAYA_LEADS_URL`. Confirm this path with Kraya support.
+After changing env → **restart / redeploy**.
 
-**Important:**  
-- Keys are **server-side** only — do **not** use `NEXT_PUBLIC_`.  
-- After setting env vars, **redeploy / restart**.
+---
 
-Legacy `INTERAKT_*` vars still work as fallback during migration, but prefer `KRAYA_*`.
+## 2. Create Auto Follow-up sequences (required)
 
-## 2. Webhook (production)
+Kraya → **Auto Follow-ups** → create one active sequence per message type.
+
+Each sequence should include the matching approved template, e.g.:
+
+| Sequence name (example) | Template inside it |
+|-------------------------|--------------------|
+| `transactional_booking_received` | `transactional_booking_received` |
+| `transactional_booking_confirmation` | `transactional_booking_confirmation` |
+| `transactional_admin_new_appointment` | `transactional_admin_new_appointment` |
+| `transactional_employee_assign` | `transactional_employee_assign` |
+| `transactional_user_appointment_rescheduled` | same |
+| `transactional_employee_appointment_rescheduled` | same |
+| `service_feedback` | `service_feedback` |
+
+Easiest: **sequence name = template name** (matches `.env`).
+
+---
+
+## 3. Webhook (Kraya → website)
 
 Kraya → Webhooks:
 
 - URL: `https://veyona.in/api/webhooks/kraya`
 - Secret: same as `KRAYA_WEBHOOK_SECRET`
-- Enable + Save
+- Active + Save
 
-## 3. Debug
+This receives lead events; it does **not** send WhatsApp.
 
-1. `GET /api/whatsapp/status` → `whatsappConfigured: true`, `provider: "kraya"`
-2. `GET /api/whatsapp/test?phone=XXXXXXXXXX` → test send
-3. Logs: `"Kraya WhatsApp error"` / `"WhatsApp send URL not configured"`
-4. New booking → check lead appears in Kraya CRM
+---
 
-## Short checklist
+## 4. Debug
 
-1. Production me `KRAYA_API_KEY` + send URL + `ADMIN_WHATSAPP_PHONE` set?
-2. Templates Meta-approved in Kraya WhatsApp?
-3. Deploy/restart kiya?
-4. Webhook URL production domain pe point karta hai?
+1. `GET /api/whatsapp/status` → `whatsappConfigured: true`, `deliveryMode: "leads_sequence"`
+2. `GET /api/whatsapp/test?phone=XXXXXXXXXX` → lead upsert with sequence
+3. Logs: `[whatsapp/kraya] send via lead sequence` or `Kraya lead upsert failed`
+4. If `Invalid api key` → re-copy API key from dashboard, restart
+5. New booking → lead in Kraya CRM + sequence WhatsApp
+
+## Checklist
+
+1. API key valid (leads upsert succeeds)
+2. Templates approved
+3. Auto Follow-up sequences active (with those templates)
+4. `KRAYA_SEQUENCE_*` / names match
+5. Deploy + restart
