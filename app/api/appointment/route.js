@@ -400,49 +400,68 @@ export async function POST(req) {
       .filter(Boolean)
       .join(", ");
 
-    // Sync lead to Kraya CRM (documented Leads API)
+    const bookingId = appointment._id.toString().slice(-6).toUpperCase();
+    const customerPhone10 = String(populated.customer?.phone || customerPhone || "")
+      .replace(/\D/g, "")
+      .slice(-10);
+    const adminPhoneRaw = process.env.ADMIN_WHATSAPP_PHONE || process.env.ADMIN_PHONE;
+    const adminPhone10 = adminPhoneRaw
+      ? String(adminPhoneRaw).replace(/\D/g, "").slice(-10)
+      : "";
+
+    // CRM sync (no sequence — WhatsApp sends below attach the sequence)
     upsertKrayaLead(leadFromAppointment(populated)).catch((err) =>
-      console.error("Kraya lead upsert failed:", err)
+      console.error("Kraya lead sync failed:", err)
     );
 
-    // Notify user instantly that booking request is received
-    // Template placeholders: {{1}} = customer name, {{2}} = service names
+    // Notify customer that booking request is received (Kraya sequence → WhatsApp API)
     const userTemplate = getTemplateEnv(
       "BOOKING_RECEIVED",
       "transactional_booking_received"
     );
-    if (populated.customer?.phone) {
+    if (customerPhone10) {
       const customerLabel = customerName || populated.customer?.name || "Customer";
       const serviceLabel = servicesText || populated.service?.name || "your selected service";
       sendWhatsAppTemplate(
-        populated.customer.phone,
+        customerPhone10,
         userTemplate,
         krayaVars({
           [KRAYA_VARS.LEAD_NAME]: customerLabel,
           [KRAYA_VARS.SERVICE]: serviceLabel,
-        })
+        }),
+        {
+          leadName: customerLabel,
+          notes: `Veyona booking ${bookingId} · ${userTemplate}`,
+        }
       ).catch((err) => console.error("WhatsApp booking received failed:", err));
     }
 
-    // Notify admin on WhatsApp about new appointment
-    const adminPhone = process.env.ADMIN_WHATSAPP_PHONE || process.env.ADMIN_PHONE;
+    // Admin alert — skip when admin number = customer (same Kraya lead; second sequence overwrites first)
     const adminTemplate = getTemplateEnv(
       "ADMIN_NEW_APPOINTMENT",
       "transactional_admin_new_appointment"
     );
-    if (adminPhone) {
-      const bookingId = appointment._id.toString().slice(-6).toUpperCase();
+    if (adminPhone10 && adminPhone10 !== customerPhone10) {
       const customerBase = customerName || populated.customer?.name || "Customer";
       sendWhatsAppTemplate(
-        adminPhone,
+        adminPhone10,
         adminTemplate,
         krayaVars({
           [KRAYA_VARS.LEAD_NAME]: customerBase,
           [KRAYA_VARS.SERVICE]: servicesText
             ? `Booking ${bookingId} · ${servicesText}`
             : `Booking ${bookingId}`,
-        })
+        }),
+        {
+          leadName: customerBase,
+          notes: `Veyona admin alert ${bookingId} · ${adminTemplate}`,
+        }
       ).catch((err) => console.error("WhatsApp admin new appointment failed:", err));
+    } else if (adminPhone10 && adminPhone10 === customerPhone10) {
+      console.info(
+        "[whatsapp/kraya] skipped admin template — same phone as customer (avoids sequence overwrite)",
+        { phone: adminPhone10, bookingId }
+      );
     }
 
     return NextResponse.json(populated);

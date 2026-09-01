@@ -54,6 +54,8 @@ export async function GET(req) {
       template,
       provider: "kraya",
       variables: vars,
+      kraya: result.data || null,
+      sequence: result.sequence || null,
     });
   } catch (error) {
     return NextResponse.json(
