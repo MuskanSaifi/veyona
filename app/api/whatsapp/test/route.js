@@ -15,7 +15,7 @@ export async function GET(req) {
       process.env.ADMIN_PHONE;
     const template =
       searchParams.get("template") ||
-      getTemplateEnv("BOOKING_RECEIVED", "transactional_booking_received");
+      getTemplateEnv("BOOKING_RECEIVED", "transactional_booking_received_v2");
 
     if (!phone) {
       return NextResponse.json(

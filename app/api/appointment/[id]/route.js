@@ -418,7 +418,7 @@ export async function PUT(req, { params }) {
     // When admin first confirms: send WhatsApp template to user (e.g. "Your Booking is Confirmed!")
     const userTemplateName = getTemplateEnv(
       "BOOKING_CONFIRMED",
-      "transactional_booking_confirmation"
+      "transactional_booking_confirmation_v2"
     );
     if (status === "confirmed" && !wasConfirmed && updated.employee && updated.customer?.phone) {
       const dateStr = new Date(updated.date).toLocaleDateString("en-IN", {
@@ -452,7 +452,7 @@ export async function PUT(req, { params }) {
     // Notify employee when confirmed (transactional_employee_assign)
     const employeeTemplate = getTemplateEnv(
       "EMPLOYEE_ASSIGN",
-      "transactional_employee_assign"
+      "transactional_employee_assign_v2"
     );
     if (status === "confirmed" && !wasConfirmed && updated.employee?.phone) {
       const dateStr = new Date(updated.date).toLocaleDateString("en-IN", {

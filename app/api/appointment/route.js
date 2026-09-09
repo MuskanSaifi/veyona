@@ -417,7 +417,7 @@ export async function POST(req) {
     // Notify customer that booking request is received (Kraya sequence → WhatsApp API)
     const userTemplate = getTemplateEnv(
       "BOOKING_RECEIVED",
-      "transactional_booking_received"
+      "transactional_booking_received_v2"
     );
     if (customerPhone10) {
       const customerLabel = customerName || populated.customer?.name || "Customer";
@@ -439,7 +439,7 @@ export async function POST(req) {
     // Admin alert — skip when admin number = customer (same Kraya lead; second sequence overwrites first)
     const adminTemplate = getTemplateEnv(
       "ADMIN_NEW_APPOINTMENT",
-      "transactional_admin_new_appointment"
+      "transactional_admin_new_appointment_v2"
     );
     if (adminPhone10 && adminPhone10 !== customerPhone10) {
       const customerBase = customerName || populated.customer?.name || "Customer";
