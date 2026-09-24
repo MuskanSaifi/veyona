@@ -26,6 +26,7 @@ import AppDownloadTab from "@/app/admin/dashboard/AppDownloadTab";
 import CouponTab from "@/app/admin/dashboard/CouponTab";
 import TrustSignalsTab from "@/app/admin/dashboard/TrustSignalsTab";
 import UsersTab from "@/app/admin/dashboard/UsersTab";
+import BlacklistTab from "@/app/admin/dashboard/BlacklistTab";
 import ReelTab from "@/app/admin/dashboard/ReelTab";
 import SiteSettingsTab from "@/app/admin/dashboard/SiteSettingsTab";
 import WalletTab from "@/app/admin/dashboard/WalletTab";
@@ -57,6 +58,8 @@ export default function PanelTabContent({ activeTab, setActiveTab }) {
       return <WalletTab />;
     case "users":
       return <UsersTab />;
+    case "blacklist":
+      return <BlacklistTab />;
     case "appointments":
       return <AppointmentTab />;
     case "customer-feedback":

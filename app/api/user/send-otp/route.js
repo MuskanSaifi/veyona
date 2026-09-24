@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import User from "@/models/User";
 import { sendOTPSMS } from "@/lib/sms";
+import {
+  isCustomerBlacklisted,
+  customerBlacklistMessage,
+} from "@/lib/blacklist";
 
 export async function POST(req) {
   await connectDB();
@@ -13,6 +17,13 @@ export async function POST(req) {
       return NextResponse.json(
         { message: "Phone number is required" },
         { status: 400 }
+      );
+    }
+
+    if (await isCustomerBlacklisted({ phone })) {
+      return NextResponse.json(
+        { message: customerBlacklistMessage() },
+        { status: 403 }
       );
     }
 

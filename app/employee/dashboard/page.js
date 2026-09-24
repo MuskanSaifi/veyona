@@ -21,6 +21,7 @@ import {
   FiCreditCard,
   FiThumbsUp,
   FiCalendar,
+  FiSlash,
 } from "react-icons/fi";
 import {
   MdCategory,
@@ -47,6 +48,7 @@ const ICONS = {
   employees: FiUsers,
   wallets: FiCreditCard,
   users: FiUsers,
+  blacklist: FiSlash,
   appointments: MdEventAvailable,
   "customer-feedback": FiThumbsUp,
   "all-invoices": FiFileText,

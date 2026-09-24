@@ -6,8 +6,11 @@ export function middleware(req) {
 
   // Admin routes
   if (pathname.startsWith("/admin")) {
-    // login page ko allow karo
-    if (pathname.startsWith("/admin/login")) {
+    // login / register pages ko allow karo
+    if (
+      pathname.startsWith("/admin/login") ||
+      pathname.startsWith("/admin/register")
+    ) {
       return NextResponse.next();
     }
 

@@ -13,6 +13,10 @@ import { KRAYA_VARS, krayaVars } from "@/lib/krayaTemplateVars";
 import { escapeRegex } from "@/lib/customerLookup";
 import { computeOrderTotals } from "@/lib/cartPricing";
 import { resolveSalonForBooking } from "@/lib/bookingSalon";
+import {
+  isCustomerBlacklisted,
+  customerBlacklistMessage,
+} from "@/lib/blacklist";
 
 function getEffectiveExpiry(coupon) {
   if (!coupon) return null;
@@ -145,6 +149,18 @@ export async function POST(req) {
       return NextResponse.json(
         { message: "All fields are required" },
         { status: 400 }
+      );
+    }
+
+    if (
+      await isCustomerBlacklisted({
+        phone: customerPhone,
+        email: customerEmail,
+      })
+    ) {
+      return NextResponse.json(
+        { message: customerBlacklistMessage() },
+        { status: 403 }
       );
     }
 
