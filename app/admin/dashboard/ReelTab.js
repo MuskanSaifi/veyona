@@ -9,6 +9,7 @@ export default function ReelTab() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [videoPreview, setVideoPreview] = useState(null);
 
   const [form, setForm] = useState({
@@ -51,10 +52,14 @@ export default function ReelTab() {
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
-    if (file) {
-      setForm((p) => ({ ...p, video: file }));
-      setVideoPreview(URL.createObjectURL(file));
+    if (!file) return;
+    if (file.size > 80 * 1024 * 1024) {
+      toast.error("Video must be under 80MB");
+      e.target.value = "";
+      return;
     }
+    setForm((p) => ({ ...p, video: file }));
+    setVideoPreview(URL.createObjectURL(file));
   };
 
   /* ---------------- SUBMIT ---------------- */
@@ -70,24 +75,33 @@ export default function ReelTab() {
     formData.append("description", form.description);
     formData.append("video", form.video);
 
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 180000);
+
     try {
-      setLoading(true);
+      setUploading(true);
       const res = await fetch("/api/reels", {
         method: "POST",
         body: formData,
+        signal: controller.signal,
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         toast.success("Reel uploaded successfully");
         reset();
         fetchReels();
       } else {
-        const error = await res.json();
-        toast.error(error.error || "Failed to upload reel");
+        toast.error(data.error || "Failed to upload reel");
       }
     } catch (error) {
-      toast.error("Failed to upload reel");
+      if (error?.name === "AbortError") {
+        toast.error("Upload timed out. Try a smaller video (under 80MB).");
+      } else {
+        toast.error("Failed to upload reel");
+      }
     } finally {
-      setLoading(false);
+      clearTimeout(timer);
+      setUploading(false);
     }
   };
 
@@ -187,8 +201,8 @@ export default function ReelTab() {
                 <button type="button" style={styles.cancelButton} onClick={reset}>
                   Cancel
                 </button>
-                <button type="submit" style={styles.submitButton} disabled={loading}>
-                  {loading ? "Uploading..." : "Upload"}
+                <button type="submit" style={styles.submitButton} disabled={uploading}>
+                  {uploading ? "Uploading..." : "Upload"}
                 </button>
               </div>
             </form>

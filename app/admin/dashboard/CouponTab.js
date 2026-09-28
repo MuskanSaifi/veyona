@@ -25,6 +25,23 @@ export default function CouponTab() {
     active: true,
   });
 
+  const generateCouponCode = () => {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const used = new Set(coupons.map((c) => String(c.code || "").toUpperCase()));
+    for (let attempt = 0; attempt < 20; attempt++) {
+      let suffix = "";
+      for (let i = 0; i < 7; i++) {
+        suffix += chars[Math.floor(Math.random() * chars.length)];
+      }
+      const code = `VEY${suffix}`;
+      if (!used.has(code)) {
+        setForm((prev) => ({ ...prev, code }));
+        return;
+      }
+    }
+    toast.error("Could not generate a unique code. Try again.");
+  };
+
   const fetchCoupons = async () => {
     try {
       const res = await fetch("/api/coupon");
@@ -449,15 +466,29 @@ export default function CouponTab() {
               <label style={{ display: "block", marginBottom: 8, fontWeight: 600, color: "#475569", fontSize: 14 }}>
                 Coupon Code *
               </label>
-              <input
-                type="text"
-                value={form.code}
-                onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
-                placeholder="SAVE20"
-                style={styles.inputStyle}
-                required
-                disabled={!!editing}
-              />
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 16 }}>
+                <input
+                  type="text"
+                  value={form.code}
+                  onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
+                  placeholder="SAVE20"
+                  style={{ ...styles.inputStyle, marginBottom: 0, flex: 1, minWidth: 0 }}
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={generateCouponCode}
+                  style={{
+                    ...styles.cancelButton,
+                    flex: "0 0 auto",
+                    margin: 0,
+                    whiteSpace: "nowrap",
+                    padding: "12px 14px",
+                  }}
+                >
+                  Generate
+                </button>
+              </div>
 
               <label style={{ display: "block", marginBottom: 8, fontWeight: 600, color: "#475569", fontSize: 14 }}>
                 Discount Type

@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import Reel from "@/models/Reel";
-import cloudinary from "@/lib/cloudinary";
-import { Readable } from "stream";
+import { uploadVideoBuffer } from "@/lib/cloudinaryUpload";
+
+export const maxDuration = 180;
+const MAX_VIDEO_BYTES = 80 * 1024 * 1024;
 
 await connectDB();
 
@@ -27,23 +29,18 @@ export async function POST(request) {
       return NextResponse.json({ error: "Title and video file are required" }, { status: 400 });
     }
 
-    // Upload video to Cloudinary
     const buffer = Buffer.from(await file.arrayBuffer());
-    const stream = Readable.from(buffer);
-
-    const uploadResult = await new Promise((resolve, reject) => {
-      const uploadStream = cloudinary.uploader.upload_stream(
-        {
-          resource_type: "video",
-          folder: "reels",
-        },
-        (error, result) => {
-          if (error) reject(error);
-          else resolve(result);
-        }
+    if (!buffer.length) {
+      return NextResponse.json({ error: "Video file is empty" }, { status: 400 });
+    }
+    if (buffer.length > MAX_VIDEO_BYTES) {
+      return NextResponse.json(
+        { error: "Video is too large. Maximum size is 80MB." },
+        { status: 413 }
       );
-      stream.pipe(uploadStream);
-    });
+    }
+
+    const uploadResult = await uploadVideoBuffer(buffer, "reels");
 
     // Create reel in DB
     const reel = new Reel({
@@ -58,6 +55,8 @@ export async function POST(request) {
     return NextResponse.json(reel, { status: 201 });
   } catch (error) {
     console.error("Error creating reel:", error);
-    return NextResponse.json({ error: "Failed to create reel" }, { status: 500 });
+    const message =
+      error?.message || error?.error?.message || "Failed to create reel";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

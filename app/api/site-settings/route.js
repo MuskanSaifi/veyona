@@ -1,25 +1,28 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
-import SiteSettings from "@/models/SiteSettings";
+import Appointment from "@/models/Appointment";
+
+/** Public header total = this base plus every appointment in the database. */
+const APPOINTMENT_DISPLAY_BASE = 10000;
 
 /**
  * GET /api/site-settings
- * Public, cached. Used by the site header (HappyCustomersBar).
+ * Public. Header strip shows 10,000 + total appointments.
  */
 export async function GET() {
   await connectDB();
-  const doc = await SiteSettings.findOne().sort({ createdAt: -1 }).lean();
+  const totalAppointments = await Appointment.countDocuments();
 
   const data = {
-    happyCustomersEnabled: doc?.happyCustomersEnabled ?? false,
-    happyCustomersCount: doc?.happyCustomersCount ?? 0,
-    happyCustomersLabel: doc?.happyCustomersLabel ?? "Happy Customers",
-    happyCustomersSuffix: doc?.happyCustomersSuffix ?? "+",
+    happyCustomersEnabled: true,
+    happyCustomersCount: APPOINTMENT_DISPLAY_BASE + totalAppointments,
+    happyCustomersLabel: "Total Appointments",
+    happyCustomersSuffix: "",
   };
 
   return NextResponse.json(data, {
     headers: {
-      "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
+      "Cache-Control": "no-store",
     },
   });
 }

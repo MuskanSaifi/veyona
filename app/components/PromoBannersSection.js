@@ -5,29 +5,52 @@ import Image from "next/image";
 import Link from "next/link";
 
 const DEFAULT_IMAGE =
-  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='360'%3E%3Crect fill='%23f3e8e2' width='600' height='360'/%3E%3Ctext fill='%23a16207' font-family='sans-serif' font-size='20' x='50%25' y='50%25' text-anchor='middle' dy='.3em'%3EOffer%3C/text%3E%3C/svg%3E";
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='280'%3E%3Crect fill='%23e7e5e4' width='400' height='280'/%3E%3C/svg%3E";
 
-function PromoLink({ promo, children }) {
-  const href = promo.linkUrl?.trim();
-  if (!href) return children;
-  const isExternal = href.startsWith("http");
-  if (isExternal) {
-    return (
-      <a href={href} target="_blank" rel="noopener noreferrer" className="block h-full">
-        {children}
-      </a>
-    );
-  }
+function AdBody({ promo }) {
   return (
-    <Link href={href} className="block h-full">
-      {children}
-    </Link>
+    <>
+      <div className="relative h-[150px] sm:h-[168px] bg-stone-200">
+        <Image
+          src={promo.image || DEFAULT_IMAGE}
+          alt={promo.title || "Offer"}
+          fill
+          className="object-cover"
+          sizes="220px"
+        />
+      </div>
+      <div
+        className="px-3.5 pt-3.5 pb-4 text-white"
+        style={{ background: "var(--accent-terracotta)" }}
+      >
+        {promo.badge && (
+          <div className="text-[10px] font-bold uppercase tracking-wider text-white/80 mb-1">
+            {promo.badge}
+          </div>
+        )}
+        {promo.title && (
+          <div className="text-[15px] leading-snug font-bold">{promo.title}</div>
+        )}
+        {promo.subtitle && (
+          <p className="mt-1 text-[12px] leading-snug text-white/90 line-clamp-3">
+            {promo.subtitle}
+          </p>
+        )}
+        {promo.linkUrl && (
+          <span className="mt-3 inline-flex items-center justify-center rounded-md bg-white px-3 py-1.5 text-[12px] font-bold text-gray-900">
+            {promo.linkLabel || "Book Now"}
+          </span>
+        )}
+      </div>
+    </>
   );
 }
 
-export default function PromoBannersSection({ placement = "homepage", title = "Special Offers" }) {
+export default function PromoBannersSection({ placement = "homepage" }) {
   const [promos, setPromos] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [index, setIndex] = useState(0);
+  const [closed, setClosed] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -46,66 +69,66 @@ export default function PromoBannersSection({ placement = "homepage", title = "S
     load();
   }, [placement]);
 
-  if (loading || promos.length === 0) return null;
+  useEffect(() => {
+    if (promos.length < 2 || closed) return undefined;
+    const timer = setInterval(() => {
+      setIndex((current) => (current + 1) % promos.length);
+    }, 6000);
+    return () => clearInterval(timer);
+  }, [promos.length, closed]);
+
+  if (loading || closed || promos.length === 0) return null;
+
+  const promo = promos[index] || promos[0];
+  const href = promo.linkUrl?.trim();
+  const cardClass =
+    "block w-[200px] sm:w-[220px] overflow-hidden rounded-xl bg-white shadow-[0_10px_30px_rgba(15,23,42,0.22)]";
+
+  const card = href ? (
+    href.startsWith("http") ? (
+      <a href={href} target="_blank" rel="noopener noreferrer" className={cardClass}>
+        <AdBody promo={promo} />
+      </a>
+    ) : (
+      <Link href={href} className={cardClass}>
+        <AdBody promo={promo} />
+      </Link>
+    )
+  ) : (
+    <div className={cardClass}>
+      <AdBody promo={promo} />
+    </div>
+  );
 
   return (
-    <section className="w-full py-12 md:py-16" style={{ background: "var(--bg-cream)" }}>
-      <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-8 md:mb-10">
-          <h2 className="text-2xl md:text-4xl font-bold text-gray-900 mb-2">{title}</h2>
-          <div className="w-20 h-1 bg-gradient-to-r from-[var(--accent-terracotta)] to-[var(--accent-coral)] mx-auto rounded-full" />
-        </div>
-
-        <div
-          className={`grid gap-5 md:gap-6 ${
-            promos.length === 1
-              ? "grid-cols-1 max-w-2xl mx-auto"
-              : promos.length === 2
-                ? "grid-cols-1 md:grid-cols-2"
-                : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
-          }`}
-        >
-          {promos.map((promo) => (
-            <article
-              key={promo._id}
-              className="group relative overflow-hidden rounded-2xl bg-white shadow-[0_16px_40px_rgba(15,23,42,0.08)] border border-white/80 hover:shadow-[0_24px_56px_rgba(15,23,42,0.12)] transition-all duration-300 hover:-translate-y-1"
-            >
-              <PromoLink promo={promo}>
-                <div className="relative h-44 sm:h-48 md:h-52 overflow-hidden bg-slate-100">
-                  <Image
-                    src={promo.image || DEFAULT_IMAGE}
-                    alt={promo.title}
-                    fill
-                    className="object-cover transition-transform duration-500 group-hover:scale-105"
-                    sizes="(max-width: 768px) 100vw, 33vw"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-                  {promo.badge && (
-                    <span className="absolute top-3 left-3 px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-wider bg-[var(--accent-coral)] text-white shadow-md">
-                      {promo.badge}
-                    </span>
-                  )}
-                </div>
-
-                <div className="p-4 sm:p-5">
-                  <h3 className="text-lg sm:text-xl font-bold text-gray-900 leading-tight mb-1.5 group-hover:text-[var(--accent-terracotta)] transition-colors">
-                    {promo.title}
-                  </h3>
-                  {promo.subtitle && (
-                    <p className="text-sm text-gray-600 line-clamp-2 mb-4">{promo.subtitle}</p>
-                  )}
-                  {promo.linkUrl && (
-                    <span className="inline-flex items-center text-sm font-semibold text-[var(--accent-terracotta)]">
-                      {promo.linkLabel || "Book Now"}
-                      <span className="ml-1 transition-transform group-hover:translate-x-1">→</span>
-                    </span>
-                  )}
-                </div>
-              </PromoLink>
-            </article>
+    <aside
+      className="fixed z-[900] right-4 sm:right-6 top-[62%] -translate-y-1/2"
+      aria-label="Promotion"
+    >
+      <button
+        type="button"
+        aria-label="Close offer"
+        onClick={() => setClosed(true)}
+        className="absolute -top-2 -right-2 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-white text-gray-700 text-sm shadow-md border border-gray-200"
+      >
+        ×
+      </button>
+      {card}
+      {promos.length > 1 && (
+        <div className="mt-2 flex justify-center gap-1.5">
+          {promos.map((item, dotIndex) => (
+            <button
+              key={item._id}
+              type="button"
+              aria-label={`Show offer ${dotIndex + 1}`}
+              onClick={() => setIndex(dotIndex)}
+              className={`h-1.5 rounded-full ${
+                dotIndex === index ? "w-4 bg-[var(--accent-terracotta)]" : "w-1.5 bg-gray-300"
+              }`}
+            />
           ))}
         </div>
-      </div>
-    </section>
+      )}
+    </aside>
   );
 }

@@ -293,7 +293,7 @@ export default function Home() {
       <ShortAboutSection />
 
       {/* Promotional offers — bridal, seasonal, etc. */}
-      <PromoBannersSection placement="homepage" title="Special Offers & Promotions" />
+      <PromoBannersSection placement="homepage" />
 
       {/* Our Services - 2x2 simple cards (Beauty, Aesthetics, Dental, Tattoo) */}
       <section className="w-full py-14 md:py-20" style={{ background: "var(--bg-cream)" }}>

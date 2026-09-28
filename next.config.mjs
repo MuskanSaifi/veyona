@@ -11,8 +11,10 @@ const nextConfig = {
   },
   experimental: {
     serverActions: {
-      bodySizeLimit: "20mb",
+      bodySizeLimit: "100mb",
     },
+    // Default is 10MB. Larger reel videos never finish parsing and the UI stays on "Uploading...".
+    proxyClientMaxBodySize: "100mb",
   },
 };
 
